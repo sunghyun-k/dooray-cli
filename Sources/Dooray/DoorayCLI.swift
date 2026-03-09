@@ -104,18 +104,29 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .shortAndLong, help: "워크플로우 클래스 필터 (backlog,registered,working,closed)")
         var workflow: String?
 
-        @Option(name: .shortAndLong, help: "정렬 (createdAt, -createdAt, postUpdatedAt, -postUpdatedAt)")
+        @Option(name: .shortAndLong, parsing: .unconditional, help: "정렬 (createdAt, -createdAt, postUpdatedAt, -postUpdatedAt)")
         var order: String?
+
+        @Option(name: .long, help: "담당자 멤버 ID (쉼표 구분)")
+        var toMemberIds: String?
+
+        @Option(name: .long, help: "생성일 필터 (from,to 형식, ISO 8601)")
+        var createdAt: String?
 
         func run() async throws {
             let client = try DoorayClient()
             let projectId = try await client.resolveProjectId(project)
             let workflowClasses = workflow?.split(separator: ",").map(String.init)
+            let toMembers = toMemberIds?.split(separator: ",").map(String.init)
+            let createdAtRange = createdAt?.split(separator: ",").map(String.init)
             let posts = try await client.listPosts(
                 projectId: projectId,
                 page: page,
                 workflowClasses: workflowClasses,
-                order: order
+                toMemberIds: toMembers,
+                order: order,
+                createdAtFrom: createdAtRange?.first,
+                createdAtTo: createdAtRange?.count ?? 0 > 1 ? createdAtRange?[1] : nil
             )
 
             print("number,subject,status,priority,assignee,updated")

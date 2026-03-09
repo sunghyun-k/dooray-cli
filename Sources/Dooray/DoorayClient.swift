@@ -157,12 +157,16 @@ final class DoorayClient: Sendable {
         size: Int = 20,
         workflowClasses: [String]? = nil,
         toMemberIds: [String]? = nil,
-        order: String? = nil
+        order: String? = nil,
+        createdAtFrom: String? = nil,
+        createdAtTo: String? = nil
     ) async throws -> [Post] {
         var params: [String: String] = ["page": "\(page)", "size": "\(size)"]
         if let workflowClasses { params["postWorkflowClasses"] = workflowClasses.joined(separator: ",") }
         if let toMemberIds { params["toMemberIds"] = toMemberIds.joined(separator: ",") }
         if let order { params["order"] = order }
+        if let createdAtFrom { params["createdAtFrom"] = createdAtFrom }
+        if let createdAtTo { params["createdAtTo"] = createdAtTo }
 
         let response: DoorayResponse<[Post]> = try await get(
             path: "/project/v1/projects/\(projectId)/posts", parameters: params
@@ -265,11 +269,17 @@ final class DoorayClient: Sendable {
     // MARK: - Logs (Comments)
 
     func listLogs(projectId: String, postId: String, page: Int = 0, size: Int = 20) async throws -> [Log] {
-        let response: DoorayResponse<LogListResult> = try await get(
-            path: "/project/v1/projects/\(projectId)/posts/\(postId)/logs",
-            parameters: ["page": "\(page)", "size": "\(size)"]
-        )
-        return response.result?.contents ?? []
+        let path = "/project/v1/projects/\(projectId)/posts/\(postId)/logs"
+        let params = ["page": "\(page)", "size": "\(size)"]
+
+        // API가 result를 배열 또는 딕셔너리로 반환할 수 있음
+        do {
+            let response: DoorayResponse<[Log]> = try await get(path: path, parameters: params)
+            return response.result ?? []
+        } catch {
+            let response: DoorayResponse<LogListResult> = try await get(path: path, parameters: params)
+            return response.result?.contents ?? []
+        }
     }
 
     func createLog(
