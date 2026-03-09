@@ -11,11 +11,12 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "Dooray",
+            name: "dooray-cli",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Alamofire", package: "Alamofire"),
-            ]
+            ],
+            path: "Sources/Dooray"
         ),
     ]
 )

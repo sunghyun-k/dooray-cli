@@ -1,0 +1,81 @@
+# dooray-cli
+
+두레이 프로젝트 관리 CLI. 태스크, 댓글, 워크플로우, 태그, 첨부파일을 조회하고 관리합니다.
+
+## 설치
+
+```bash
+brew install sunghyun-k/tap/dooray
+```
+
+## 사전 요구사항
+
+- macOS 13+
+- `DOORAY_API_TOKEN` 환경변수 설정 필요
+- (선택) `DOORAY_TENANT` 환경변수: 테넌트 코드 (예: `nhnent`) 또는 전체 URL (예: `https://nhnent.dooray.com`)
+
+```bash
+export DOORAY_API_TOKEN="your-api-token"
+export DOORAY_TENANT="nhnent"
+```
+
+## 사용법
+
+```bash
+# 프로젝트 목록
+dooray-cli project list [--state active|archived] [--page 0]
+
+# 프로젝트 멤버
+dooray-cli project members <프로젝트코드>
+
+# 태스크 조회 (ID, 프로젝트코드/번호, URL 모두 지원)
+dooray-cli task get <식별자>
+
+# 태스크 목록
+dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt]
+
+# 태스크 생성
+dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
+
+# 태스크 수정
+dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--priority high]
+
+# 워크플로우 변경
+dooray-cli task set-workflow <식별자> <워크플로우ID>
+
+# 댓글 목록/작성
+dooray-cli comment list <식별자>
+dooray-cli comment create <식별자> "댓글 내용"
+
+# 워크플로우/태그 목록
+dooray-cli workflow list <프로젝트코드>
+dooray-cli tag list <프로젝트코드>
+
+# 첨부파일 목록
+dooray-cli file list <식별자>
+```
+
+출력은 CSV 형식입니다. 태스크 상세 조회는 사람이 읽기 쉬운 형식으로 출력됩니다.
+
+### 태스크 식별자
+
+세 가지 형식을 지원합니다:
+
+- **태스크 ID**: 19자리 숫자 (예: `1234567890123456789`)
+- **프로젝트코드/번호**: `my-project/123`
+- **두레이 URL**: `https://nhnent.dooray.com/project/my-project/task/456`
+
+## AI 에이전트 연동
+
+### Claude Code
+
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) 플러그인으로 사용할 수 있습니다.
+
+```
+/plugin marketplace add sunghyun-k/dooray-cli
+/plugin install dooray-cli@dooray-cli
+```
+
+## License
+
+MIT

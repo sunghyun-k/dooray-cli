@@ -1,7 +1,7 @@
 ---
 name: dooray
 description: Manage Dooray project tasks, comments, workflows, tags, and files
-allowed-tools: Bash(dooray:*)
+allowed-tools: Bash(dooray-cli:*)
 ---
 
 # Dooray CLI Skill
@@ -18,46 +18,46 @@ allowed-tools: Bash(dooray:*)
 ### 프로젝트
 ```bash
 # 프로젝트 목록
-dooray project list [--state active|archived] [--page 0]
+dooray-cli project list [--state active|archived] [--page 0]
 
 # 프로젝트 멤버
-dooray project members <프로젝트코드>
+dooray-cli project members <프로젝트코드>
 ```
 
 ### 태스크
 ```bash
 # 태스크 조회 (ID, 프로젝트코드/번호, URL 모두 지원)
-dooray task get <식별자>
+dooray-cli task get <식별자>
 
 # 태스크 목록
-dooray task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--page 0]
+dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--page 0]
 
 # 태스크 생성
-dooray task create <프로젝트코드> "제목" [--body "본문"] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
+dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
 
 # 태스크 수정
-dooray task update <식별자> [--subject "새제목"] [--body "새본문"] [--priority high]
+dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--priority high]
 
 # 워크플로우 변경
-dooray task set-workflow <식별자> <워크플로우ID>
+dooray-cli task set-workflow <식별자> <워크플로우ID>
 ```
 
 ### 댓글
 ```bash
 # 댓글 목록
-dooray comment list <식별자> [--page 0]
+dooray-cli comment list <식별자> [--page 0]
 
 # 댓글 작성
-dooray comment create <식별자> "댓글 내용"
+dooray-cli comment create <식별자> "댓글 내용"
 ```
 
 ### 워크플로우/태그
 ```bash
 # 워크플로우 목록 (상태 변경시 ID 확인용)
-dooray workflow list <프로젝트코드>
+dooray-cli workflow list <프로젝트코드>
 
 # 태그 목록
-dooray tag list <프로젝트코드>
+dooray-cli tag list <프로젝트코드>
 ```
 
 ## 태스크 식별자 형식
@@ -75,9 +75,9 @@ dooray tag list <프로젝트코드>
 
 사용자가 "내 프로젝트의 진행중인 태스크 보여줘"라고 하면:
 ```bash
-dooray task list my-project --workflow working
+dooray-cli task list my-project --workflow working
 ```
 
 사용자가 특정 태스크의 상태를 변경하고 싶다면:
-1. 먼저 워크플로우 목록을 조회: `dooray workflow list my-project`
-2. 원하는 워크플로우 ID로 변경: `dooray task set-workflow my-project/123 <워크플로우ID>`
+1. 먼저 워크플로우 목록을 조회: `dooray-cli workflow list my-project`
+2. 원하는 워크플로우 ID로 변경: `dooray-cli task set-workflow my-project/123 <워크플로우ID>`

@@ -4,7 +4,7 @@ import Foundation
 @main
 struct DoorayCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "dooray",
+        commandName: "dooray-cli",
         abstract: "두레이 CLI",
         subcommands: [
             ProjectCommand.self,
