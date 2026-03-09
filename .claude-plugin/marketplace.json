@@ -1,10 +1,11 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "dooray-cli",
-  "description": "Dooray project management CLI for AI agents",
   "owner": {
     "name": "Sunghyun Kim",
     "email": "sunghyun_k@icloud.com"
+  },
+  "metadata": {
+    "description": "Dooray project management CLI for AI agents"
   },
   "plugins": [
     {
@@ -12,7 +13,6 @@
       "description": "Manage Dooray tasks, comments, workflows, tags, and files via CLI",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/dooray"],
       "category": "development"
     }
   ]
