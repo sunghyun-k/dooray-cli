@@ -1,3 +1,9 @@
+---
+name: dooray
+description: Manage Dooray project tasks, comments, workflows, tags, and files
+allowed-tools: Bash(dooray:*)
+---
+
 # Dooray CLI Skill
 
 두레이 프로젝트 관리 CLI 도구. 태스크, 댓글, 워크플로우, 태그 등을 조회하고 관리합니다.
