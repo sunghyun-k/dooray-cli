@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   release:
@@ -33,7 +34,7 @@ jobs:
       - name: Update Homebrew formula
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          VERSION: ${{ github.event.release.tag_name }}
+          VERSION: ${{ github.ref_name }}
           SHA256: ${{ steps.sha.outputs.sha256 }}
         run: |
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/sunghyun-k/homebrew-tap.git" homebrew-tap
