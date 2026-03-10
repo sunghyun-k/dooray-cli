@@ -32,7 +32,7 @@ dooray-cli project members <프로젝트코드>
 dooray-cli task get <식별자>
 
 # 태스크 목록
-dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt]
+dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-at from,to]
 
 # 태스크 생성
 dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
@@ -49,7 +49,7 @@ dooray-cli comment create <식별자> "댓글 내용"
 
 # 워크플로우/태그 목록
 dooray-cli workflow list <프로젝트코드>
-dooray-cli tag list <프로젝트코드>
+dooray-cli tag list <프로젝트코드> [--page 0]
 
 # 첨부파일 목록
 dooray-cli file list <식별자>
@@ -63,7 +63,7 @@ dooray-cli file list <식별자>
 
 - **태스크 ID**: 19자리 숫자 (예: `1234567890123456789`)
 - **프로젝트코드/번호**: `my-project/123`
-- **두레이 URL**: `https://your-tenant.dooray.com/project/my-project/task/456`
+- **두레이 URL**: `https://your-tenant.dooray.com/project/my-project/task/456` 또는 `https://your-tenant.dooray.com/task/{projectId}/{postId}`
 
 ## AI 에이전트 연동
 
