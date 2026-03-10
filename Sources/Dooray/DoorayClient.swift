@@ -369,13 +369,18 @@ final class DoorayClient: Sendable {
             guard let parsed = parseDoorayURL(urlString) else {
                 throw DoorayError.invalidIdentifier(urlString)
             }
-            guard let project = try await findProjectByCode(parsed.projectCode) else {
-                throw DoorayError.projectNotFound(parsed.projectCode)
+            switch parsed {
+            case .projectIdAndPostId(let projectId, let postId):
+                return (projectId, postId)
+            case .projectCodeAndNumber(let projectCode, let taskNumber):
+                guard let project = try await findProjectByCode(projectCode) else {
+                    throw DoorayError.projectNotFound(projectCode)
+                }
+                guard let post = try await getPostByNumber(projectId: project.id, postNumber: taskNumber) else {
+                    throw DoorayError.taskNotFound(urlString)
+                }
+                return (project.id, post.id)
             }
-            guard let post = try await getPostByNumber(projectId: project.id, postNumber: parsed.taskNumber) else {
-                throw DoorayError.taskNotFound(urlString)
-            }
-            return (project.id, post.id)
         }
     }
 

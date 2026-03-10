@@ -30,29 +30,42 @@ enum TaskIdentifier: Sendable {
     }
 }
 
-/// 두레이 URL에서 프로젝트 코드와 태스크 번호를 추출
-func parseDoorayURL(_ urlString: String) -> (projectCode: String, taskNumber: String)? {
+enum DoorayURLResult: Sendable {
+    /// /project/{project-code}/task/{task-number}
+    case projectCodeAndNumber(projectCode: String, taskNumber: String)
+    /// /task/{project-id}/{post-id}
+    case projectIdAndPostId(projectId: String, postId: String)
+}
+
+/// 두레이 URL에서 프로젝트/태스크 정보를 추출
+func parseDoorayURL(_ urlString: String) -> DoorayURLResult? {
     guard let url = URL(string: urlString.removingPercentEncoding ?? urlString) ?? URL(string: urlString) else {
         return nil
     }
 
     let pathComponents = url.pathComponents.filter { $0 != "/" }
 
-    // /project/{project-code}/task/{task-number} 패턴
-    guard let projectIdx = pathComponents.firstIndex(of: "project"),
-          projectIdx + 1 < pathComponents.count else {
-        return nil
+    // 패턴 1: /project/{project-code}/task/{task-number}
+    if let projectIdx = pathComponents.firstIndex(of: "project"),
+       projectIdx + 1 < pathComponents.count,
+       let taskIdx = pathComponents.firstIndex(of: "task"),
+       taskIdx + 1 < pathComponents.count {
+        return .projectCodeAndNumber(
+            projectCode: pathComponents[projectIdx + 1],
+            taskNumber: pathComponents[taskIdx + 1]
+        )
     }
 
-    let projectCode = pathComponents[projectIdx + 1]
-
-    guard let taskIdx = pathComponents.firstIndex(of: "task"),
-          taskIdx + 1 < pathComponents.count else {
-        return nil
+    // 패턴 2: /task/{project-id}/{post-id}
+    if let taskIdx = pathComponents.firstIndex(of: "task"),
+       taskIdx + 2 < pathComponents.count {
+        return .projectIdAndPostId(
+            projectId: pathComponents[taskIdx + 1],
+            postId: pathComponents[taskIdx + 2]
+        )
     }
 
-    let taskPart = pathComponents[taskIdx + 1]
-    return (projectCode, taskPart)
+    return nil
 }
 
 func csvEscape(_ value: String) -> String {
