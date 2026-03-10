@@ -5,7 +5,7 @@
 ## 설치
 
 ```bash
-brew install sunghyun-k/tap/dooray
+brew install sunghyun-k/tap/dooray-cli
 ```
 
 ## 사전 요구사항
