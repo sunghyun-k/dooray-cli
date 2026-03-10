@@ -1,5 +1,8 @@
 import Foundation
 
+/// 19자리 숫자 ID 패턴
+nonisolated(unsafe) let doorayIdPattern = /^\d{19}$/
+
 /// 두레이 URL 또는 식별자를 파싱하여 (projectId, postId) 또는 (projectCode, taskNumber)를 반환
 enum TaskIdentifier: Sendable {
     case taskId(String)
@@ -11,8 +14,7 @@ enum TaskIdentifier: Sendable {
             return .url(input)
         }
 
-        let idPattern = /^\d{19}$/
-        if input.wholeMatch(of: idPattern) != nil {
+        if input.wholeMatch(of: doorayIdPattern) != nil {
             return .taskId(input)
         }
 
@@ -83,6 +85,10 @@ func parseDoorayURL(_ urlString: String) -> DoorayURLResult? {
     }
 
     return nil
+}
+
+func splitComma(_ value: String?) -> [String]? {
+    value?.split(separator: ",").map(String.init)
 }
 
 func csvEscape(_ value: String) -> String {

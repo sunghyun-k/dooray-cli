@@ -24,11 +24,6 @@ struct Project: Decodable, Sendable {
     let scope: String?
 }
 
-struct ProjectListResult: Decodable, Sendable {
-    let contents: [Project]?
-    // 프로젝트 목록은 contents로 래핑됨
-}
-
 // MARK: - Member
 
 struct Member: Decodable, Sendable {
@@ -208,28 +203,8 @@ struct LogCreator: Decodable, Sendable {
 
 // MARK: - List Results
 
-struct PostListResult: Decodable, Sendable {
-    let contents: [Post]?
-}
-
-struct MemberListResult: Decodable, Sendable {
-    let contents: [Member]?
-}
-
 struct MemberGroupListResult: Decodable, Sendable {
     let contents: [MemberGroup]?
-}
-
-struct WorkflowListResult: Decodable, Sendable {
-    let contents: [Workflow]?
-}
-
-struct TagListResult: Decodable, Sendable {
-    let contents: [Tag]?
-}
-
-struct LogListResult: Decodable, Sendable {
-    let contents: [Log]?
 }
 
 struct CreateResult: Decodable, Sendable {

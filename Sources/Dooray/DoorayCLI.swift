@@ -116,9 +116,9 @@ struct TaskCommand: AsyncParsableCommand {
         func run() async throws {
             let client = try DoorayClient()
             let projectId = try await client.resolveProjectId(project)
-            let workflowClasses = workflow?.split(separator: ",").map(String.init)
-            let toMembers = toMemberIds?.split(separator: ",").map(String.init)
-            let createdAtRange = createdAt?.split(separator: ",").map(String.init)
+            let workflowClasses = splitComma(workflow)
+            let toMembers = splitComma(toMemberIds)
+            let createdAtRange = splitComma(createdAt)
             let posts = try await client.listPosts(
                 projectId: projectId,
                 page: page,
@@ -164,7 +164,7 @@ struct TaskCommand: AsyncParsableCommand {
             let client = try DoorayClient()
             let projectId = try await client.resolveProjectId(project)
 
-            let usersTo = to?.split(separator: ",").map(String.init)
+            let usersTo = splitComma(to)
 
             let taskId = try await client.createPost(
                 projectId: projectId,

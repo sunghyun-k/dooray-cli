@@ -53,26 +53,12 @@ final class DoorayClient: Sendable {
         }
     }
 
-    private func post<T: Decodable & Sendable>(
+    private func mutate<T: Decodable & Sendable>(
+        method: HTTPMethod,
         path: String,
         jsonData: Data
     ) async throws -> DoorayResponse<T> {
-        var urlRequest = try URLRequest(url: "\(baseURL)\(path)", method: .post)
-        urlRequest.headers = headers
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = jsonData
-
-        return try await session.request(urlRequest)
-            .validate()
-            .serializingDecodable(DoorayResponse<T>.self)
-            .value
-    }
-
-    private func put<T: Decodable & Sendable>(
-        path: String,
-        jsonData: Data
-    ) async throws -> DoorayResponse<T> {
-        var urlRequest = try URLRequest(url: "\(baseURL)\(path)", method: .put)
+        var urlRequest = try URLRequest(url: "\(baseURL)\(path)", method: method)
         urlRequest.headers = headers
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = jsonData
@@ -87,6 +73,24 @@ final class DoorayClient: Sendable {
 
     private func jsonData(_ dict: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: dict)
+    }
+
+    /// API가 result를 배열 또는 { contents: [...] }로 반환하는 경우를 통합 처리
+    private struct ListResult<T: Decodable & Sendable>: Decodable, Sendable {
+        let contents: [T]?
+    }
+
+    private func getList<T: Decodable & Sendable>(
+        path: String,
+        parameters: [String: String] = [:]
+    ) async throws -> [T] {
+        do {
+            let response: DoorayResponse<[T]> = try await get(path: path, parameters: parameters)
+            return response.result ?? []
+        } catch {
+            let response: DoorayResponse<ListResult<T>> = try await get(path: path, parameters: parameters)
+            return response.result?.contents ?? []
+        }
     }
 
     // MARK: - Projects
@@ -120,18 +124,10 @@ final class DoorayClient: Sendable {
     // MARK: - Members
 
     func getProjectMembers(projectId: String, page: Int = 0, size: Int = 20) async throws -> [Member] {
-        let params = ["page": "\(page)", "size": "\(size)"]
-        do {
-            let response: DoorayResponse<[Member]> = try await get(
-                path: "/project/v1/projects/\(projectId)/members", parameters: params
-            )
-            return response.result ?? []
-        } catch {
-            let response: DoorayResponse<MemberListResult> = try await get(
-                path: "/project/v1/projects/\(projectId)/members", parameters: params
-            )
-            return response.result?.contents ?? []
-        }
+        try await getList(
+            path: "/project/v1/projects/\(projectId)/members",
+            parameters: ["page": "\(page)", "size": "\(size)"]
+        )
     }
 
     func getProjectMemberGroups(projectId: String) async throws -> [MemberGroup] {
@@ -224,7 +220,7 @@ final class DoorayClient: Sendable {
         if let milestoneId { dict["milestoneId"] = milestoneId }
         if let tagIds { dict["tagIds"] = tagIds }
 
-        let response: DoorayResponse<CreateResult> = try await post(
+        let response: DoorayResponse<CreateResult> = try await mutate(method: .post,
             path: "/project/v1/projects/\(projectId)/posts",
             jsonData: jsonData(dict)
         )
@@ -246,14 +242,14 @@ final class DoorayClient: Sendable {
         if let bodyContent { dict["body"] = ["content": bodyContent, "mimeType": "text/x-markdown"] }
         if let priority { dict["priority"] = priority }
 
-        let _: DoorayResponse<Post> = try await put(
+        let _: DoorayResponse<Post> = try await mutate(method: .put,
             path: "/project/v1/projects/\(projectId)/posts/\(postId)",
             jsonData: jsonData(dict)
         )
     }
 
     func setPostWorkflow(projectId: String, postId: String, workflowId: String) async throws {
-        let _: DoorayResponse<CreateResult> = try await post(
+        let _: DoorayResponse<CreateResult> = try await mutate(method: .post,
             path: "/project/v1/projects/\(projectId)/posts/\(postId)/set-workflow",
             jsonData: jsonData(["workflowId": workflowId])
         )
@@ -262,50 +258,25 @@ final class DoorayClient: Sendable {
     // MARK: - Workflows
 
     func getWorkflows(projectId: String) async throws -> [Workflow] {
-        do {
-            let response: DoorayResponse<[Workflow]> = try await get(
-                path: "/project/v1/projects/\(projectId)/workflows"
-            )
-            return response.result ?? []
-        } catch {
-            let response: DoorayResponse<WorkflowListResult> = try await get(
-                path: "/project/v1/projects/\(projectId)/workflows"
-            )
-            return response.result?.contents ?? []
-        }
+        try await getList(path: "/project/v1/projects/\(projectId)/workflows")
     }
 
     // MARK: - Tags
 
     func listTags(projectId: String, page: Int = 0, size: Int = 20) async throws -> [Tag] {
-        let params = ["page": "\(page)", "size": "\(size)"]
-        do {
-            let response: DoorayResponse<[Tag]> = try await get(
-                path: "/project/v1/projects/\(projectId)/tags", parameters: params
-            )
-            return response.result ?? []
-        } catch {
-            let response: DoorayResponse<TagListResult> = try await get(
-                path: "/project/v1/projects/\(projectId)/tags", parameters: params
-            )
-            return response.result?.contents ?? []
-        }
+        try await getList(
+            path: "/project/v1/projects/\(projectId)/tags",
+            parameters: ["page": "\(page)", "size": "\(size)"]
+        )
     }
 
     // MARK: - Logs (Comments)
 
     func listLogs(projectId: String, postId: String, page: Int = 0, size: Int = 20) async throws -> [Log] {
-        let path = "/project/v1/projects/\(projectId)/posts/\(postId)/logs"
-        let params = ["page": "\(page)", "size": "\(size)"]
-
-        // API가 result를 배열 또는 딕셔너리로 반환할 수 있음
-        do {
-            let response: DoorayResponse<[Log]> = try await get(path: path, parameters: params)
-            return response.result ?? []
-        } catch {
-            let response: DoorayResponse<LogListResult> = try await get(path: path, parameters: params)
-            return response.result?.contents ?? []
-        }
+        try await getList(
+            path: "/project/v1/projects/\(projectId)/posts/\(postId)/logs",
+            parameters: ["page": "\(page)", "size": "\(size)"]
+        )
     }
 
     func createLog(
@@ -317,7 +288,7 @@ final class DoorayClient: Sendable {
         let dict: [String: Any] = [
             "body": ["content": content, "mimeType": mimeType],
         ]
-        let response: DoorayResponse<CreateResult> = try await post(
+        let response: DoorayResponse<CreateResult> = try await mutate(method: .post,
             path: "/project/v1/projects/\(projectId)/posts/\(postId)/logs",
             jsonData: jsonData(dict)
         )
@@ -423,8 +394,7 @@ final class DoorayClient: Sendable {
     }
 
     func resolveProjectId(_ codeOrId: String) async throws -> String {
-        let idPattern = /^\d{19}$/
-        if codeOrId.wholeMatch(of: idPattern) != nil {
+        if codeOrId.wholeMatch(of: doorayIdPattern) != nil {
             return codeOrId
         }
         guard let project = try await findProjectByCode(codeOrId) else {
