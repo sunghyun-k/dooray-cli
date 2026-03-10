@@ -356,7 +356,7 @@ struct FileCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "file",
         abstract: "첨부파일 관리",
-        subcommands: [List.self]
+        subcommands: [List.self, Download.self]
     )
 
     struct List: AsyncParsableCommand {
@@ -381,6 +381,50 @@ struct FileCommand: AsyncParsableCommand {
                 let size = file.size.map { "\($0)" } ?? ""
                 let downloadURL = client.fileDownloadURL(fileId: file.id)
                 print("\(file.id),\(name),\(size),\(downloadURL)")
+            }
+        }
+    }
+
+    struct Download: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "첨부파일 다운로드")
+
+        @Argument(help: "태스크 ID, 프로젝트코드/번호, 또는 URL")
+        var identifier: String
+
+        @Option(name: .shortAndLong, help: "저장 디렉토리 (기본: 현재 디렉토리)")
+        var output: String?
+
+        @Argument(help: "다운로드할 파일 ID (생략 시 전체 다운로드)")
+        var fileId: String?
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let (projectId, postId) = try await client.resolveTask(identifier)
+            let post = try await client.getPostWithProject(projectId: projectId, postId: postId)
+
+            guard let files = post.files, !files.isEmpty else {
+                print("첨부파일이 없습니다.")
+                return
+            }
+
+            let targetFiles: [PostFile]
+            if let fileId {
+                guard let file = files.first(where: { $0.id == fileId }) else {
+                    throw DoorayError.apiError(statusCode: 0, message: "파일 ID '\(fileId)'를 찾을 수 없습니다.")
+                }
+                targetFiles = [file]
+            } else {
+                targetFiles = files
+            }
+
+            let outputDir = URL(fileURLWithPath: output ?? FileManager.default.currentDirectoryPath)
+
+            for file in targetFiles {
+                let fileName = file.name ?? file.id
+                let destination = outputDir.appendingPathComponent(fileName)
+                print("다운로드 중: \(fileName)...")
+                try await client.downloadFile(projectId: projectId, postId: postId, fileId: file.id, to: destination)
+                print("완료: \(destination.path)")
             }
         }
     }

@@ -343,6 +343,33 @@ final class DoorayClient: Sendable {
         return "\(base)/files/\(fileId)"
     }
 
+    func downloadFile(projectId: String, postId: String, fileId: String, to destination: URL) async throws {
+        let url = "\(baseURL)/project/v1/projects/\(projectId)/posts/\(postId)/files/\(fileId)?media=raw"
+
+        // 307 리다이렉트 시 Authorization 헤더를 유지하도록 설정
+        let authHeaders = headers
+        let redirector = Redirector(behavior: .modify { _, request, _ in
+            var request = request
+            for header in authHeaders.dictionary {
+                request.setValue(header.value, forHTTPHeaderField: header.key)
+            }
+            return request
+        })
+
+        let dest: DownloadRequest.Destination = { _, _ in
+            (destination, [.removePreviousFile, .createIntermediateDirectories])
+        }
+        let response = await session.download(url, headers: authHeaders, to: dest)
+            .redirect(using: redirector)
+            .validate()
+            .serializingDownload(using: URLResponseSerializer())
+            .response
+
+        if let error = response.error {
+            throw DoorayError.networkError("파일 다운로드 실패: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Task Identifier Resolution
 
     func resolveTask(_ identifier: String) async throws -> (projectId: String, postId: String) {
