@@ -115,11 +115,18 @@ final class DoorayClient: Sendable {
     // MARK: - Members
 
     func getProjectMembers(projectId: String, page: Int = 0, size: Int = 20) async throws -> [Member] {
-        let response: DoorayResponse<MemberListResult> = try await get(
-            path: "/project/v1/projects/\(projectId)/members",
-            parameters: ["page": "\(page)", "size": "\(size)"]
-        )
-        return response.result?.contents ?? []
+        let params = ["page": "\(page)", "size": "\(size)"]
+        do {
+            let response: DoorayResponse<[Member]> = try await get(
+                path: "/project/v1/projects/\(projectId)/members", parameters: params
+            )
+            return response.result ?? []
+        } catch {
+            let response: DoorayResponse<MemberListResult> = try await get(
+                path: "/project/v1/projects/\(projectId)/members", parameters: params
+            )
+            return response.result?.contents ?? []
+        }
     }
 
     func getProjectMemberGroups(projectId: String) async throws -> [MemberGroup] {
@@ -250,20 +257,34 @@ final class DoorayClient: Sendable {
     // MARK: - Workflows
 
     func getWorkflows(projectId: String) async throws -> [Workflow] {
-        let response: DoorayResponse<WorkflowListResult> = try await get(
-            path: "/project/v1/projects/\(projectId)/workflows"
-        )
-        return response.result?.contents ?? []
+        do {
+            let response: DoorayResponse<[Workflow]> = try await get(
+                path: "/project/v1/projects/\(projectId)/workflows"
+            )
+            return response.result ?? []
+        } catch {
+            let response: DoorayResponse<WorkflowListResult> = try await get(
+                path: "/project/v1/projects/\(projectId)/workflows"
+            )
+            return response.result?.contents ?? []
+        }
     }
 
     // MARK: - Tags
 
     func listTags(projectId: String, page: Int = 0, size: Int = 20) async throws -> [Tag] {
-        let response: DoorayResponse<TagListResult> = try await get(
-            path: "/project/v1/projects/\(projectId)/tags",
-            parameters: ["page": "\(page)", "size": "\(size)"]
-        )
-        return response.result?.contents ?? []
+        let params = ["page": "\(page)", "size": "\(size)"]
+        do {
+            let response: DoorayResponse<[Tag]> = try await get(
+                path: "/project/v1/projects/\(projectId)/tags", parameters: params
+            )
+            return response.result ?? []
+        } catch {
+            let response: DoorayResponse<TagListResult> = try await get(
+                path: "/project/v1/projects/\(projectId)/tags", parameters: params
+            )
+            return response.result?.contents ?? []
+        }
     }
 
     // MARK: - Logs (Comments)

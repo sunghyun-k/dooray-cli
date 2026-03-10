@@ -136,11 +136,39 @@ struct Workflow: Decodable, Sendable {
     }
 }
 
-struct WorkflowNames: Decodable, Sendable {
+struct WorkflowNames: Sendable {
     let ko: String?
     let en: String?
     let ja: String?
     let zh: String?
+}
+
+private struct WorkflowLocaleName: Decodable {
+    let locale: String
+    let name: String
+}
+
+extension WorkflowNames: Decodable {
+    init(from decoder: Decoder) throws {
+        // API returns either {"ko":"...", "en":"..."} or [{"locale":"ko_KR","name":"..."}]
+        if let container = try? decoder.container(keyedBy: CodingKeys.self) {
+            ko = try container.decodeIfPresent(String.self, forKey: .ko)
+            en = try container.decodeIfPresent(String.self, forKey: .en)
+            ja = try container.decodeIfPresent(String.self, forKey: .ja)
+            zh = try container.decodeIfPresent(String.self, forKey: .zh)
+        } else if let items = try? decoder.singleValueContainer().decode([WorkflowLocaleName].self) {
+            ko = items.first(where: { $0.locale.hasPrefix("ko") })?.name
+            en = items.first(where: { $0.locale.hasPrefix("en") })?.name
+            ja = items.first(where: { $0.locale.hasPrefix("ja") })?.name
+            zh = items.first(where: { $0.locale.hasPrefix("zh") })?.name
+        } else {
+            ko = nil; en = nil; ja = nil; zh = nil
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ko, en, ja, zh
+    }
 }
 
 // MARK: - Tag
