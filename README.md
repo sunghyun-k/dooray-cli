@@ -12,11 +12,11 @@ brew install sunghyun-k/tap/dooray
 
 - macOS 13+
 - `DOORAY_API_TOKEN` 환경변수 설정 필요
-- (선택) `DOORAY_TENANT` 환경변수: 테넌트 코드 (예: `nhnent`) 또는 전체 URL (예: `https://nhnent.dooray.com`)
+- (선택) `DOORAY_TENANT` 환경변수: 테넌트 코드 (예: `your-tenant`) 또는 전체 URL (예: `https://your-tenant.dooray.com`)
 
 ```bash
 export DOORAY_API_TOKEN="your-api-token"
-export DOORAY_TENANT="nhnent"
+export DOORAY_TENANT="your-tenant"
 ```
 
 ## 사용법
@@ -63,7 +63,7 @@ dooray-cli file list <식별자>
 
 - **태스크 ID**: 19자리 숫자 (예: `1234567890123456789`)
 - **프로젝트코드/번호**: `my-project/123`
-- **두레이 URL**: `https://nhnent.dooray.com/project/my-project/task/456`
+- **두레이 URL**: `https://your-tenant.dooray.com/project/my-project/task/456`
 
 ## AI 에이전트 연동
 

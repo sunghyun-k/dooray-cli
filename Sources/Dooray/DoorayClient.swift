@@ -304,7 +304,7 @@ final class DoorayClient: Sendable {
     // MARK: - Files
 
     /// 테넌트 base URL 생성
-    /// DOORAY_TENANT 환경변수: 테넌트 코드 (예: nhnent) 또는 전체 URL (예: https://nhnent.dooray.com)
+    /// DOORAY_TENANT 환경변수: 테넌트 코드 (예: your-tenant) 또는 전체 URL (예: https://your-tenant.dooray.com)
     static var tenantBaseURL: String? {
         guard let tenant = ProcessInfo.processInfo.environment["DOORAY_TENANT"], !tenant.isEmpty else {
             return nil

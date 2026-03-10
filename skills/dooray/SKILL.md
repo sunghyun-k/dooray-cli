@@ -65,7 +65,7 @@ dooray-cli tag list <프로젝트코드>
 세 가지 형식을 지원합니다:
 1. **태스크 ID**: 19자리 숫자 (예: `1234567890123456789`)
 2. **프로젝트코드/번호**: `프로젝트코드/123`
-3. **두레이 URL**: `https://nhnent.dooray.com/project/my-project/task/456`
+3. **두레이 URL**: `https://your-tenant.dooray.com/project/my-project/task/456`
 
 ## 출력 형식
 
