@@ -417,7 +417,16 @@ struct FileCommand: AsyncParsableCommand {
                 targetFiles = files
             }
 
-            let outputDir = URL(fileURLWithPath: output ?? FileManager.default.currentDirectoryPath)
+            let outputDir: URL
+            if let output {
+                outputDir = URL(fileURLWithPath: output)
+            } else {
+                let tmpDir = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("dooray-files")
+                    .appendingPathComponent(postId)
+                try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+                outputDir = tmpDir
+            }
 
             for file in targetFiles {
                 let fileName = file.name ?? file.id
