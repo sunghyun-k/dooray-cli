@@ -91,22 +91,27 @@ final class DoorayClient: Sendable {
 
     // MARK: - Projects
 
-    func listProjects(page: Int = 0, size: Int = 20, state: String? = nil) async throws -> [Project] {
+    func listProjects(page: Int = 0, size: Int = 20, state: String? = nil, type: String? = nil) async throws -> [Project] {
         var params: [String: String] = ["page": "\(page)", "size": "\(size)"]
         if let state { params["state"] = state }
+        if let type { params["type"] = type }
 
         let response: DoorayResponse<[Project]> = try await get(path: "/project/v1/projects", parameters: params)
         return response.result ?? []
     }
 
     func findProjectByCode(_ code: String) async throws -> Project? {
-        for page in 0..<20 {
-            let projects = try await listProjects(page: page, size: 100)
-            if projects.isEmpty { break }
-            if let found = projects.first(where: {
-                $0.code.lowercased() == code.lowercased()
-            }) {
-                return found
+        // @ 접두사는 개인(private) 프로젝트, 그 외는 public 먼저 검색
+        let types: [String?] = code.hasPrefix("@") ? ["private"] : [nil, "private"]
+        for type in types {
+            for page in 0..<20 {
+                let projects = try await listProjects(page: page, size: 100, type: type)
+                if projects.isEmpty { break }
+                if let found = projects.first(where: {
+                    $0.code.lowercased() == code.lowercased()
+                }) {
+                    return found
+                }
             }
         }
         return nil
@@ -407,6 +412,12 @@ final class DoorayClient: Sendable {
                     throw DoorayError.taskNotFound(urlString)
                 }
                 return (project.id, post.id)
+            case .postId(let postId):
+                let post = try await getPost(postId: postId)
+                guard let projectId = post.project?.id else {
+                    throw DoorayError.taskNotFound(urlString)
+                }
+                return (projectId, post.id)
             }
         }
     }

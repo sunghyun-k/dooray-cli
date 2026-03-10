@@ -35,6 +35,8 @@ enum DoorayURLResult: Sendable {
     case projectCodeAndNumber(projectCode: String, taskNumber: String)
     /// /task/{project-id}/{post-id}
     case projectIdAndPostId(projectId: String, postId: String)
+    /// /project/tasks/{post-id}
+    case postId(String)
 }
 
 /// 두레이 URL에서 프로젝트/태스크 정보를 추출
@@ -62,6 +64,21 @@ func parseDoorayURL(_ urlString: String) -> DoorayURLResult? {
         return .projectIdAndPostId(
             projectId: pathComponents[taskIdx + 1],
             postId: pathComponents[taskIdx + 2]
+        )
+    }
+
+    // 패턴 3: /project/tasks/{post-id}
+    if let tasksIdx = pathComponents.firstIndex(of: "tasks"),
+       tasksIdx + 1 < pathComponents.count {
+        return .postId(pathComponents[tasksIdx + 1])
+    }
+
+    // 패턴 4: /project/projects/{project-code}/{task-number}
+    if let projectsIdx = pathComponents.firstIndex(of: "projects"),
+       projectsIdx + 2 < pathComponents.count {
+        return .projectCodeAndNumber(
+            projectCode: pathComponents[projectsIdx + 1],
+            taskNumber: pathComponents[projectsIdx + 2]
         )
     }
 
