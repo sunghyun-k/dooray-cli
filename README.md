@@ -32,7 +32,7 @@ dooray-cli project members <프로젝트코드>
 dooray-cli task get <식별자>
 
 # 태스크 목록
-dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-at from,to]
+dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working,closed] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-at from,to] [--page 0]
 
 # 태스크 생성
 dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
@@ -44,7 +44,7 @@ dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] 
 dooray-cli task set-workflow <식별자> <워크플로우ID>
 
 # 댓글 목록/작성/수정
-dooray-cli comment list <식별자>
+dooray-cli comment list <식별자> [--page 0]
 dooray-cli comment create <식별자> "댓글 내용"
 dooray-cli comment update <식별자> <댓글ID> "수정할 내용"
 
