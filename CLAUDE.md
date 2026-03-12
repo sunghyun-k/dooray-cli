@@ -54,6 +54,13 @@ agent-browser get text body
 - **Reservation**: ResourcesCategory, Resources, Resource Reservations
 - **Contact**: Contacts (search)
 
+## 문서 최신화
+
+기능을 추가하거나 변경할 때, 관련 문서들도 함께 최신화한다:
+
+- `README.md`: 사용법 섹션에 새 명령어 반영
+- `skills/dooray/SKILL.md`: 명령어 요약 섹션에 새 명령어 반영
+
 ### API Base URLs
 
 - `https://api.dooray.com` (일반)

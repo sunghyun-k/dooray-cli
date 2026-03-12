@@ -49,6 +49,9 @@ dooray-cli comment list <식별자> [--page 0]
 
 # 댓글 작성
 dooray-cli comment create <식별자> "댓글 내용"
+
+# 댓글 수정
+dooray-cli comment update <식별자> <댓글ID> "수정할 내용"
 ```
 
 ### 워크플로우/태그
@@ -64,6 +67,9 @@ dooray-cli tag list <프로젝트코드> [--page 0]
 ```bash
 # 첨부파일 목록
 dooray-cli file list <식별자>
+
+# 첨부파일 다운로드
+dooray-cli file download <식별자> [--output 저장경로] [파일ID]
 ```
 
 ## 태스크 식별자 형식
