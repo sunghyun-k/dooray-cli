@@ -298,6 +298,22 @@ final class DoorayClient: Sendable {
         return id
     }
 
+    func updateLog(
+        projectId: String,
+        postId: String,
+        logId: String,
+        content: String,
+        mimeType: String = "text/x-markdown"
+    ) async throws {
+        let dict: [String: Any] = [
+            "body": ["content": content, "mimeType": mimeType],
+        ]
+        let _: DoorayResponse<CreateResult> = try await mutate(method: .put,
+            path: "/project/v1/projects/\(projectId)/posts/\(postId)/logs/\(logId)",
+            jsonData: jsonData(dict)
+        )
+    }
+
     // MARK: - Files
 
     /// 테넌트 base URL 생성

@@ -239,7 +239,7 @@ struct CommentCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "comment",
         abstract: "댓글 관리",
-        subcommands: [List.self, Create.self]
+        subcommands: [List.self, Create.self, Update.self]
     )
 
     struct List: AsyncParsableCommand {
@@ -286,6 +286,32 @@ struct CommentCommand: AsyncParsableCommand {
             )
 
             print("댓글 작성 완료: \(logId)")
+        }
+    }
+    struct Update: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "댓글 수정")
+
+        @Argument(help: "태스크 ID, 프로젝트코드/번호, 또는 URL")
+        var identifier: String
+
+        @Argument(help: "댓글 ID")
+        var logId: String
+
+        @Argument(help: "수정할 내용")
+        var content: String
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let (projectId, postId) = try await client.resolveTask(identifier)
+
+            try await client.updateLog(
+                projectId: projectId,
+                postId: postId,
+                logId: logId,
+                content: content
+            )
+
+            print("댓글 수정 완료: \(logId)")
         }
     }
 }
