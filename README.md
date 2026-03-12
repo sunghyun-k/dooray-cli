@@ -43,16 +43,18 @@ dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] 
 # 워크플로우 변경
 dooray-cli task set-workflow <식별자> <워크플로우ID>
 
-# 댓글 목록/작성
+# 댓글 목록/작성/수정
 dooray-cli comment list <식별자>
 dooray-cli comment create <식별자> "댓글 내용"
+dooray-cli comment update <식별자> <댓글ID> "수정할 내용"
 
 # 워크플로우/태그 목록
 dooray-cli workflow list <프로젝트코드>
 dooray-cli tag list <프로젝트코드> [--page 0]
 
-# 첨부파일 목록
+# 첨부파일 목록/다운로드
 dooray-cli file list <식별자>
+dooray-cli file download <식별자> [--output 저장경로] [파일ID]
 ```
 
 출력은 CSV 형식입니다. 태스크 상세 조회는 사람이 읽기 쉬운 형식으로 출력됩니다.
