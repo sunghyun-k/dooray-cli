@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "agent-browser@agent-browser": true
+  }
+}
