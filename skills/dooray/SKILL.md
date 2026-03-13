@@ -18,7 +18,7 @@ allowed-tools: Bash(dooray-cli:*)
 ### 프로젝트
 ```bash
 # 프로젝트 목록
-dooray-cli project list [--state active|archived] [--page 0]
+dooray-cli project list [--state active|archived] [--mine] [--page 0]
 
 # 프로젝트 멤버
 dooray-cli project members <프로젝트코드>
@@ -30,7 +30,7 @@ dooray-cli project members <프로젝트코드>
 dooray-cli task get <식별자>
 
 # 태스크 목록
-dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-at from,to] [--page 0]
+dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-by me|멤버ID,...] [--created-at from,to] [--page 0]
 
 # 태스크 생성
 dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]

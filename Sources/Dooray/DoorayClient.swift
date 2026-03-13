@@ -95,10 +95,11 @@ final class DoorayClient: Sendable {
 
     // MARK: - Projects
 
-    func listProjects(page: Int = 0, size: Int = 20, state: String? = nil, type: String? = nil) async throws -> [Project] {
+    func listProjects(page: Int = 0, size: Int = 20, state: String? = nil, type: String? = nil, member: String? = nil) async throws -> [Project] {
         var params: [String: String] = ["page": "\(page)", "size": "\(size)"]
         if let state { params["state"] = state }
         if let type { params["type"] = type }
+        if let member { params["member"] = member }
 
         let response: DoorayResponse<[Project]> = try await get(path: "/project/v1/projects", parameters: params)
         return response.result ?? []
@@ -119,6 +120,16 @@ final class DoorayClient: Sendable {
             }
         }
         return nil
+    }
+
+    // MARK: - Current User
+
+    func getMemberMe() async throws -> OrganizationMember {
+        let response: DoorayResponse<OrganizationMember> = try await get(path: "/common/v1/members/me")
+        guard let member = response.result else {
+            throw DoorayError.apiError(statusCode: 0, message: "현재 사용자 정보를 가져올 수 없습니다.")
+        }
+        return member
     }
 
     // MARK: - Members
@@ -165,6 +176,7 @@ final class DoorayClient: Sendable {
         size: Int = 20,
         workflowClasses: [String]? = nil,
         toMemberIds: [String]? = nil,
+        fromMemberIds: [String]? = nil,
         order: String? = nil,
         createdAtFrom: String? = nil,
         createdAtTo: String? = nil
@@ -172,6 +184,7 @@ final class DoorayClient: Sendable {
         var params: [String: String] = ["page": "\(page)", "size": "\(size)"]
         if let workflowClasses { params["postWorkflowClasses"] = workflowClasses.joined(separator: ",") }
         if let toMemberIds { params["toMemberIds"] = toMemberIds.joined(separator: ",") }
+        if let fromMemberIds { params["fromMemberIds"] = fromMemberIds.joined(separator: ",") }
         if let order { params["order"] = order }
         if let createdAtFrom { params["createdAtFrom"] = createdAtFrom }
         if let createdAtTo { params["createdAtTo"] = createdAtTo }

@@ -211,6 +211,14 @@ struct CreateResult: Decodable, Sendable {
     let id: String?
 }
 
+// MARK: - Organization Member (me)
+
+struct OrganizationMember: Decodable, Sendable {
+    let id: String
+    let name: String?
+    let emailAddress: String?
+}
+
 // MARK: - File
 
 struct FileInfo: Decodable, Sendable {

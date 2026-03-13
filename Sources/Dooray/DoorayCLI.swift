@@ -32,12 +32,15 @@ struct ProjectCommand: AsyncParsableCommand {
         @Option(name: .shortAndLong, help: "상태 필터 (active/archived)")
         var state: String?
 
+        @Flag(name: .long, help: "내가 속한 프로젝트만 조회")
+        var mine: Bool = false
+
         @Option(name: .shortAndLong, help: "페이지 번호")
         var page: Int = 0
 
         func run() async throws {
             let client = try DoorayClient()
-            let projects = try await client.listProjects(page: page, state: state)
+            let projects = try await client.listProjects(page: page, state: state, member: mine ? "me" : nil)
 
             print("id,code,state,scope,description")
             for p in projects {
@@ -110,6 +113,9 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "담당자 멤버 ID (쉼표 구분)")
         var toMemberIds: String?
 
+        @Option(name: .long, help: "작성자 필터 (me 또는 멤버 ID, 쉼표 구분)")
+        var createdBy: String?
+
         @Option(name: .long, help: "생성일 필터 (from,to 형식, ISO 8601)")
         var createdAt: String?
 
@@ -119,11 +125,23 @@ struct TaskCommand: AsyncParsableCommand {
             let workflowClasses = splitComma(workflow)
             let toMembers = splitComma(toMemberIds)
             let createdAtRange = splitComma(createdAt)
+
+            var fromMembers: [String]? = nil
+            if let createdBy {
+                if createdBy.lowercased() == "me" {
+                    let me = try await client.getMemberMe()
+                    fromMembers = [me.id]
+                } else {
+                    fromMembers = splitComma(createdBy)
+                }
+            }
+
             let posts = try await client.listPosts(
                 projectId: projectId,
                 page: page,
                 workflowClasses: workflowClasses,
                 toMemberIds: toMembers,
+                fromMemberIds: fromMembers,
                 order: order,
                 createdAtFrom: createdAtRange?.first,
                 createdAtTo: createdAtRange?.count ?? 0 > 1 ? createdAtRange?[1] : nil
