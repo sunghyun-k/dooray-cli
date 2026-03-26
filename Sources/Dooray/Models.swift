@@ -190,15 +190,9 @@ struct Log: Decodable, Sendable {
     let type: String?
     let subtype: String?
     let body: PostBody?
-    let creator: LogCreator?
+    let creator: PostUser?
     let createdAt: String?
     let modifiedAt: String?
-}
-
-struct LogCreator: Decodable, Sendable {
-    let id: String?
-    let name: String?
-    let emailAddress: String?
 }
 
 // MARK: - List Results

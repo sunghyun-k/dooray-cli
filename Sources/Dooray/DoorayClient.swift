@@ -132,6 +132,14 @@ final class DoorayClient: Sendable {
         return member
     }
 
+    func getMember(id: String) async throws -> OrganizationMember {
+        let response: DoorayResponse<OrganizationMember> = try await get(path: "/common/v1/members/\(id)")
+        guard let member = response.result else {
+            throw DoorayError.apiError(statusCode: 0, message: "멤버 정보를 가져올 수 없습니다: \(id)")
+        }
+        return member
+    }
+
     // MARK: - Members
 
     func getProjectMembers(projectId: String, page: Int = 0, size: Int = 20) async throws -> [Member] {

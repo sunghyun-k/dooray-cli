@@ -147,11 +147,11 @@ struct TaskCommand: AsyncParsableCommand {
                 createdAtTo: createdAtRange?.count ?? 0 > 1 ? createdAtRange?[1] : nil
             )
 
-            print("number,subject,status,priority,assignee,updated")
+            print("number,subject,status,priority,assignee,updated,ended_at")
             for p in posts {
                 let assignee = p.users?.to?.compactMap { $0.member?.name }.joined(separator: ";") ?? ""
                 print(
-                    "\(p.number ?? 0),\(csvEscape(p.subject ?? "")),\(p.workflowClass ?? ""),\(p.priority ?? ""),\(csvEscape(assignee)),\(p.updatedAt ?? "")"
+                    "\(p.number ?? 0),\(csvEscape(p.subject ?? "")),\(p.workflowClass ?? ""),\(p.priority ?? ""),\(csvEscape(assignee)),\(p.updatedAt ?? ""),\(p.endedAt ?? "")"
                 )
             }
         }
@@ -274,11 +274,22 @@ struct CommentCommand: AsyncParsableCommand {
             let (projectId, postId) = try await client.resolveTask(identifier)
             let logs = try await client.listLogs(projectId: projectId, postId: postId, page: page)
 
+            // creator 이름 일괄 조회
+            let commentLogs = logs.filter { $0.subtype == "user" || $0.type == "comment" }
+            var memberNames: [String: String] = [:]
+            let creatorIds = Set(commentLogs.compactMap { $0.creator?.member?.organizationMemberId })
+            for id in creatorIds {
+                if let member = try? await client.getMember(id: id) {
+                    memberNames[id] = member.name
+                }
+            }
+
             print("id,creator,content,created_at")
-            for log in logs where log.subtype == "user" || log.type == "comment" {
+            for log in commentLogs {
+                let creatorName = log.creator?.member?.organizationMemberId.flatMap { memberNames[$0] } ?? ""
                 let content = csvEscape(log.body?.content ?? "")
                 print(
-                    "\(log.id),\(csvEscape(log.creator?.name ?? "")),\(content),\(log.createdAt ?? "")"
+                    "\(log.id),\(csvEscape(creatorName)),\(content),\(log.createdAt ?? "")"
                 )
             }
         }
@@ -534,6 +545,9 @@ func printPost(_ post: Post) {
 
     print("생성일: \(post.createdAt ?? "")")
     print("수정일: \(post.updatedAt ?? "")")
+    if let endedAt = post.endedAt {
+        print("완료일: \(endedAt)")
+    }
 
     if let body = post.body?.content, !body.isEmpty {
         print("\n--- 본문 ---")
