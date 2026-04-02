@@ -91,6 +91,7 @@ func splitComma(_ value: String?) -> [String]? {
     value?.split(separator: ",").map(String.init)
 }
 
+
 func csvEscape(_ value: String) -> String {
     let cleaned = value.replacingOccurrences(of: "\n", with: " ")
         .replacingOccurrences(of: "\r", with: "")

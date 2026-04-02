@@ -116,7 +116,7 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "작성자 필터 (me 또는 멤버 ID, 쉼표 구분)")
         var createdBy: String?
 
-        @Option(name: .long, help: "생성일 필터 (from,to 형식, ISO 8601)")
+        @Option(name: .long, help: "생성일 필터 (today, thisweek, prev-Nd, next-Nd, 또는 ISO8601~ISO8601 범위)")
         var createdAt: String?
 
         func run() async throws {
@@ -124,7 +124,6 @@ struct TaskCommand: AsyncParsableCommand {
             let projectId = try await client.resolveProjectId(project)
             let workflowClasses = splitComma(workflow)
             let toMembers = splitComma(toMemberIds)
-            let createdAtRange = splitComma(createdAt)
 
             var fromMembers: [String]? = nil
             if let createdBy {
@@ -143,8 +142,7 @@ struct TaskCommand: AsyncParsableCommand {
                 toMemberIds: toMembers,
                 fromMemberIds: fromMembers,
                 order: order,
-                createdAtFrom: createdAtRange?.first,
-                createdAtTo: createdAtRange?.count ?? 0 > 1 ? createdAtRange?[1] : nil
+                createdAt: createdAt
             )
 
             print("number,subject,status,priority,assignee,updated,ended_at")
