@@ -26,7 +26,7 @@ dooray-cli project members <프로젝트코드>
 
 ### 태스크
 ```bash
-# 태스크 조회 (ID, 프로젝트코드/번호, URL 모두 지원)
+# 태스크 조회 (ID, 프로젝트코드/번호, URL 모두 지원) — 하위 태스크 목록 포함
 dooray-cli task get <식별자>
 
 # 태스크 목록

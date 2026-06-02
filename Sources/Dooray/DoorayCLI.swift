@@ -91,7 +91,15 @@ struct TaskCommand: AsyncParsableCommand {
             let (projectId, postId) = try await client.resolveTask(identifier)
             let post = try await client.getPostWithProject(projectId: projectId, postId: postId)
 
-            printPost(post)
+            // 단건 조회 API 는 subTasks 를 응답에 포함하지 않으므로 parentPostId 필터로 별도 조회한다.
+            let subPosts = try await client.listPosts(
+                projectId: projectId,
+                size: 100,
+                order: "postNumber",
+                parentPostId: postId
+            )
+
+            printPost(post, subPosts: subPosts)
         }
     }
 
@@ -494,7 +502,7 @@ struct FileCommand: AsyncParsableCommand {
 
 // MARK: - Output Helpers
 
-func printPost(_ post: Post) {
+func printPost(_ post: Post, subPosts: [Post] = []) {
     print("ID: \(post.id)")
     if let taskNumber = post.taskNumber {
         print("번호: \(taskNumber)")
@@ -552,10 +560,18 @@ func printPost(_ post: Post) {
         print(body)
     }
 
-    if let subTasks = post.subTasks, !subTasks.isEmpty {
-        print("\n--- 하위 태스크 (\(subTasks.count)개) ---")
-        for sub in subTasks {
-            print("  [\(sub.workflowClass ?? "")] \(sub.subject ?? sub.id)")
+    if !subPosts.isEmpty {
+        print("\n--- 하위 태스크 (\(subPosts.count)개) ---")
+        for sub in subPosts {
+            let number: String
+            if let taskNumber = sub.taskNumber {
+                number = taskNumber
+            } else if let num = sub.number, let code = sub.project?.code {
+                number = "\(code)/\(num)"
+            } else {
+                number = sub.id
+            }
+            print("  \(number) [\(sub.workflowClass ?? "")] \(sub.subject ?? "")")
         }
     }
 }

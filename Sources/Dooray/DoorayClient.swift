@@ -186,7 +186,8 @@ final class DoorayClient: Sendable {
         toMemberIds: [String]? = nil,
         fromMemberIds: [String]? = nil,
         order: String? = nil,
-        createdAt: String? = nil
+        createdAt: String? = nil,
+        parentPostId: String? = nil
     ) async throws -> [Post] {
         var params: [String: String] = ["page": "\(page)", "size": "\(size)"]
         if let workflowClasses { params["postWorkflowClasses"] = workflowClasses.joined(separator: ",") }
@@ -194,6 +195,7 @@ final class DoorayClient: Sendable {
         if let fromMemberIds { params["fromMemberIds"] = fromMemberIds.joined(separator: ",") }
         if let order { params["order"] = order }
         if let createdAt { params["createdAt"] = createdAt }
+        if let parentPostId { params["parentPostId"] = parentPostId }
 
         let response: DoorayResponse<[Post]> = try await get(
             path: "/project/v1/projects/\(projectId)/posts", parameters: params
