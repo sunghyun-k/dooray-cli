@@ -92,6 +92,57 @@ func splitComma(_ value: String?) -> [String]? {
 }
 
 
+/// --body(텍스트) 또는 --body-file(파일) 입력을 (본문, 이미지 상대경로 기준 디렉토리)로 변환
+/// 텍스트 입력은 현재 작업 디렉토리, 파일 입력은 해당 파일의 디렉토리를 기준으로 한다.
+func loadMarkdownBody(text: String?, file: String?) throws -> (content: String, baseDir: URL)? {
+    if let file {
+        let url = URL(fileURLWithPath: (file as NSString).expandingTildeInPath)
+        let content = try String(contentsOf: url, encoding: .utf8)
+        return (content, url.deletingLastPathComponent())
+    }
+    if let text {
+        return (text, URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+    }
+    return nil
+}
+
+/// 마크다운에서 로컬 이미지 참조(![대체텍스트](경로))를 찾아 업로드 후 /files/{fileId}로 치환
+/// URL, /files/ 참조, 디스크에 존재하지 않는 경로는 그대로 둔다.
+func resolveInlineImages(
+    in content: String,
+    baseDir: URL,
+    upload: (URL) async throws -> String
+) async throws -> String {
+    let imagePattern = /!\[([^\]]*)\]\(([^)\n]+)\)/
+
+    var result = ""
+    var lastIndex = content.startIndex
+    for match in content.matches(of: imagePattern) {
+        result += content[lastIndex..<match.range.lowerBound]
+        lastIndex = match.range.upperBound
+
+        let path = String(match.2).trimmingCharacters(in: .whitespaces)
+        if path.contains("://") || path.hasPrefix("data:") || path.hasPrefix("/files/") {
+            result += content[match.range]
+            continue
+        }
+
+        let expanded = (path as NSString).expandingTildeInPath
+        let fileURL = expanded.hasPrefix("/")
+            ? URL(fileURLWithPath: expanded)
+            : baseDir.appendingPathComponent(expanded).standardizedFileURL
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            result += content[match.range]
+            continue
+        }
+
+        let fileId = try await upload(fileURL)
+        result += "![\(match.1)](/files/\(fileId))"
+    }
+    result += content[lastIndex...]
+    return result
+}
+
 func csvEscape(_ value: String) -> String {
     let cleaned = value.replacingOccurrences(of: "\n", with: " ")
         .replacingOccurrences(of: "\r", with: "")

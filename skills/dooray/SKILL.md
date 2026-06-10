@@ -33,10 +33,10 @@ dooray-cli task get <식별자>
 dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-by me|멤버ID,...] [--created-at today|thisweek|prev-Nd|next-Nd|ISO8601~ISO8601] [--page 0]
 
 # 태스크 생성
-dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
+dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
 
 # 태스크 수정
-dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--priority high]
+dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--body-file 본문.md] [--priority high]
 
 # 워크플로우 변경
 dooray-cli task set-workflow <식별자> <워크플로우ID>
@@ -47,8 +47,9 @@ dooray-cli task set-workflow <식별자> <워크플로우ID>
 # 댓글 목록
 dooray-cli comment list <식별자> [--page 0]
 
-# 댓글 작성
+# 댓글 작성 (텍스트 또는 마크다운 파일)
 dooray-cli comment create <식별자> "댓글 내용"
+dooray-cli comment create <식별자> --body-file 내용.md
 
 # 댓글 수정
 dooray-cli comment update <식별자> <댓글ID> "수정할 내용"
@@ -70,6 +71,21 @@ dooray-cli file list <식별자>
 
 # 첨부파일 다운로드
 dooray-cli file download <식별자> [--output 저장경로] [파일ID]
+
+# 첨부파일 업로드 (--inline: 본문/댓글 인라인 이미지용, 첨부 목록에 표시 안 됨)
+dooray-cli file upload <식별자> <파일경로> [파일경로...] [--inline]
+```
+
+### 인라인 이미지
+
+본문/댓글 마크다운에서 `![이름](로컬경로)`로 로컬 이미지를 참조하면 자동으로 인라인 업로드되고 `/files/{fileId}`로 치환됩니다.
+
+- 텍스트 입력(`--body`, 댓글 내용): 상대경로는 현재 디렉토리 기준
+- `--body-file`: 상대경로는 마크다운 파일 위치 기준
+- URL, 기존 `/files/` 참조, 존재하지 않는 경로는 그대로 유지
+
+```bash
+dooray-cli comment create my-project/123 "결과 스크린샷: ![결과](./screenshot.png)"
 ```
 
 ## 태스크 식별자 형식

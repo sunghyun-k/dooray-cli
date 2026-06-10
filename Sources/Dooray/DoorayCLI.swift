@@ -172,8 +172,11 @@ struct TaskCommand: AsyncParsableCommand {
         @Argument(help: "태스크 제목")
         var subject: String
 
-        @Option(name: .shortAndLong, help: "태스크 본문 (마크다운)")
+        @Option(name: .shortAndLong, help: "태스크 본문 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
         var body: String?
+
+        @Option(name: .long, help: "본문으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준)")
+        var bodyFile: String?
 
         @Option(name: .shortAndLong, help: "우선순위 (highest/high/normal/low/lowest)")
         var priority: String?
@@ -184,20 +187,38 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "담당자 멤버 ID (쉼표 구분)")
         var to: String?
 
+        func validate() throws {
+            if body != nil && bodyFile != nil {
+                throw ValidationError("--body와 --body-file은 동시에 사용할 수 없습니다.")
+            }
+        }
+
         func run() async throws {
             let client = try DoorayClient()
             let projectId = try await client.resolveProjectId(project)
 
             let usersTo = splitComma(to)
+            let markdownBody = try loadMarkdownBody(text: body, file: bodyFile)
 
             let taskId = try await client.createPost(
                 projectId: projectId,
                 subject: subject,
-                bodyContent: body,
+                bodyContent: markdownBody?.content,
                 usersTo: usersTo,
                 priority: priority,
                 dueDate: dueDate
             )
+
+            // 인라인 이미지 업로드는 postId가 필요하므로 생성 후 본문을 치환해 갱신한다.
+            if let (content, baseDir) = markdownBody {
+                let resolved = try await resolveInlineImages(in: content, baseDir: baseDir) { fileURL in
+                    print("이미지 업로드 중: \(fileURL.lastPathComponent)...")
+                    return try await client.uploadFile(projectId: projectId, postId: taskId, fileURL: fileURL, inline: true)
+                }
+                if resolved != content {
+                    try await client.updatePost(projectId: projectId, postId: taskId, bodyContent: resolved)
+                }
+            }
 
             print("태스크 생성 완료: \(taskId)")
         }
@@ -212,21 +233,38 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .shortAndLong, help: "제목")
         var subject: String?
 
-        @Option(name: .shortAndLong, help: "본문 (마크다운)")
+        @Option(name: .shortAndLong, help: "본문 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
         var body: String?
+
+        @Option(name: .long, help: "본문으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준)")
+        var bodyFile: String?
 
         @Option(name: .shortAndLong, help: "우선순위")
         var priority: String?
+
+        func validate() throws {
+            if body != nil && bodyFile != nil {
+                throw ValidationError("--body와 --body-file은 동시에 사용할 수 없습니다.")
+            }
+        }
 
         func run() async throws {
             let client = try DoorayClient()
             let (projectId, postId) = try await client.resolveTask(identifier)
 
+            var bodyContent: String?
+            if let (content, baseDir) = try loadMarkdownBody(text: body, file: bodyFile) {
+                bodyContent = try await resolveInlineImages(in: content, baseDir: baseDir) { fileURL in
+                    print("이미지 업로드 중: \(fileURL.lastPathComponent)...")
+                    return try await client.uploadFile(projectId: projectId, postId: postId, fileURL: fileURL, inline: true)
+                }
+            }
+
             try await client.updatePost(
                 projectId: projectId,
                 postId: postId,
                 subject: subject,
-                bodyContent: body,
+                bodyContent: bodyContent,
                 priority: priority
             )
 
@@ -307,17 +345,34 @@ struct CommentCommand: AsyncParsableCommand {
         @Argument(help: "태스크 ID, 프로젝트코드/번호, 또는 URL")
         var identifier: String
 
-        @Argument(help: "댓글 내용")
-        var content: String
+        @Argument(help: "댓글 내용 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
+        var content: String?
+
+        @Option(name: .long, help: "댓글 내용으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준)")
+        var bodyFile: String?
+
+        func validate() throws {
+            if (content == nil) == (bodyFile == nil) {
+                throw ValidationError("댓글 내용 또는 --body-file 중 하나를 지정해야 합니다.")
+            }
+        }
 
         func run() async throws {
             let client = try DoorayClient()
             let (projectId, postId) = try await client.resolveTask(identifier)
 
+            guard let (body, baseDir) = try loadMarkdownBody(text: content, file: bodyFile) else {
+                throw ValidationError("댓글 내용 또는 --body-file 중 하나를 지정해야 합니다.")
+            }
+            let resolved = try await resolveInlineImages(in: body, baseDir: baseDir) { fileURL in
+                print("이미지 업로드 중: \(fileURL.lastPathComponent)...")
+                return try await client.uploadFile(projectId: projectId, postId: postId, fileURL: fileURL, inline: true)
+            }
+
             let logId = try await client.createLog(
                 projectId: projectId,
                 postId: postId,
-                content: content
+                content: resolved
             )
 
             print("댓글 작성 완료: \(logId)")
@@ -417,7 +472,7 @@ struct FileCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "file",
         abstract: "첨부파일 관리",
-        subcommands: [List.self, Download.self]
+        subcommands: [List.self, Download.self, Upload.self]
     )
 
     struct List: AsyncParsableCommand {
@@ -442,6 +497,34 @@ struct FileCommand: AsyncParsableCommand {
                 let size = file.size.map { "\($0)" } ?? ""
                 let downloadURL = client.fileDownloadURL(fileId: file.id)
                 print("\(file.id),\(name),\(size),\(downloadURL)")
+            }
+        }
+    }
+
+    struct Upload: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "태스크에 첨부파일 업로드")
+
+        @Argument(help: "태스크 ID, 프로젝트코드/번호, 또는 URL")
+        var identifier: String
+
+        @Argument(help: "업로드할 파일 경로 (여러 개 가능)")
+        var files: [String]
+
+        @Flag(name: .long, help: "본문/댓글 인라인 이미지용으로 업로드 (첨부 목록에 표시되지 않음, ![이름](/files/{fileId})로 참조)")
+        var inline: Bool = false
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let (projectId, postId) = try await client.resolveTask(identifier)
+
+            for path in files {
+                let fileURL = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    throw DoorayError.apiError(statusCode: 0, message: "파일을 찾을 수 없습니다: \(path)")
+                }
+                print("업로드 중: \(fileURL.lastPathComponent)...")
+                let fileId = try await client.uploadFile(projectId: projectId, postId: postId, fileURL: fileURL, inline: inline)
+                print("완료: \(fileId)")
             }
         }
     }

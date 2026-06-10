@@ -383,6 +383,64 @@ final class DoorayClient: Sendable {
         }
     }
 
+    /// inline: true 시 본문/댓글 인라인 이미지용으로 업로드되며 일반 첨부 목록에 표시되지 않는다.
+    /// 업로드 후 마크다운에서 ![이름](/files/{반환된 ID})로 참조한다.
+    func uploadFile(projectId: String, postId: String, fileURL: URL, inline: Bool = false) async throws -> String {
+        let url = "\(baseURL)/project/v1/projects/\(projectId)/posts/\(postId)/files"
+
+        // type 필드는 file 필드보다 먼저 전송되어야 한다.
+        let formData: @Sendable (MultipartFormData) -> Void = { form in
+            if inline {
+                form.append(Data("inline_image".utf8), withName: "type")
+            }
+            form.append(fileURL, withName: "file")
+        }
+
+        // 1차 요청은 307과 location 헤더를 반환한다. 자동 리다이렉트 시
+        // Authorization 헤더와 본문이 유실되므로 직접 location으로 재요청한다.
+        let firstResponse = await session.upload(
+            multipartFormData: formData,
+            to: url,
+            headers: headers
+        )
+        .redirect(using: Redirector(behavior: .doNotFollow))
+        .serializingData()
+        .response
+
+        var uploadURL = url
+        if let status = firstResponse.response?.statusCode {
+            if (300..<400).contains(status) {
+                guard let location = firstResponse.response?.headers["Location"] else {
+                    throw DoorayError.apiError(statusCode: status, message: "파일 업로드 리다이렉트 location 헤더가 없습니다.")
+                }
+                uploadURL = location
+            } else if (200..<300).contains(status), let data = firstResponse.value,
+                      let response = try? JSONDecoder().decode(DoorayResponse<CreateResult>.self, from: data),
+                      let id = response.result?.id {
+                return id
+            } else {
+                let raw = firstResponse.value.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                throw DoorayError.apiError(statusCode: status, message: "파일 업로드 실패: \(raw.prefix(500))")
+            }
+        } else {
+            throw DoorayError.networkError(firstResponse.error?.localizedDescription ?? "Unknown error")
+        }
+
+        let response = try await session.upload(
+            multipartFormData: formData,
+            to: uploadURL,
+            headers: headers
+        )
+        .validate()
+        .serializingDecodable(DoorayResponse<CreateResult>.self)
+        .value
+
+        guard let id = response.result?.id else {
+            throw DoorayError.apiError(statusCode: 0, message: "파일 업로드 실패: \(response.header.resultMessage ?? "")")
+        }
+        return id
+    }
+
     // MARK: - Task Identifier Resolution
 
     func resolveTask(_ identifier: String) async throws -> (projectId: String, postId: String) {
