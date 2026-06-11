@@ -32,11 +32,14 @@ dooray-cli task get <식별자>
 # 태스크 목록
 dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-by me|멤버ID,...] [--created-at today|thisweek|prev-Nd|next-Nd|ISO8601~ISO8601] [--page 0]
 
-# 태스크 생성
-dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID]
+# 태스크 생성 (--parent 지정 시 하위 태스크로 생성)
+dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID] [--parent 상위태스크식별자]
 
 # 태스크 수정
 dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--body-file 본문.md] [--priority high]
+
+# 기존 태스크를 하위 태스크로 연결 (같은 프로젝트 내에서만, 1단계 계층만 지원)
+dooray-cli task set-parent <식별자> <상위태스크식별자>
 
 # 워크플로우 변경
 dooray-cli task set-workflow <식별자> <워크플로우ID>

@@ -77,7 +77,7 @@ struct TaskCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "task",
         abstract: "태스크 관리",
-        subcommands: [Get.self, List.self, Create.self, Update.self, SetWorkflow.self]
+        subcommands: [Get.self, List.self, Create.self, Update.self, SetWorkflow.self, SetParent.self]
     )
 
     struct Get: AsyncParsableCommand {
@@ -187,6 +187,9 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "담당자 멤버 ID (쉼표 구분)")
         var to: String?
 
+        @Option(name: .long, help: "상위 태스크 (태스크 ID, 프로젝트코드/번호, 또는 URL) — 하위 태스크로 생성")
+        var parent: String?
+
         func validate() throws {
             if body != nil && bodyFile != nil {
                 throw ValidationError("--body와 --body-file은 동시에 사용할 수 없습니다.")
@@ -197,6 +200,15 @@ struct TaskCommand: AsyncParsableCommand {
             let client = try DoorayClient()
             let projectId = try await client.resolveProjectId(project)
 
+            var parentPostId: String?
+            if let parent {
+                let (parentProjectId, resolvedParentId) = try await client.resolveTask(parent)
+                guard parentProjectId == projectId else {
+                    throw ValidationError("상위 태스크가 다른 프로젝트에 있습니다. 같은 프로젝트의 태스크만 상위로 지정할 수 있습니다.")
+                }
+                parentPostId = resolvedParentId
+            }
+
             let usersTo = splitComma(to)
             let markdownBody = try loadMarkdownBody(text: body, file: bodyFile)
 
@@ -206,7 +218,8 @@ struct TaskCommand: AsyncParsableCommand {
                 bodyContent: markdownBody?.content,
                 usersTo: usersTo,
                 priority: priority,
-                dueDate: dueDate
+                dueDate: dueDate,
+                parentPostId: parentPostId
             )
 
             // 인라인 이미지 업로드는 postId가 필요하므로 생성 후 본문을 치환해 갱신한다.
@@ -269,6 +282,36 @@ struct TaskCommand: AsyncParsableCommand {
             )
 
             print("태스크 수정 완료: \(postId)")
+        }
+    }
+
+    struct SetParent: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "set-parent",
+            abstract: "기존 태스크를 다른 태스크의 하위 태스크로 연결"
+        )
+
+        @Argument(help: "하위로 만들 태스크 (태스크 ID, 프로젝트코드/번호, 또는 URL)")
+        var identifier: String
+
+        @Argument(help: "상위 태스크 (태스크 ID, 프로젝트코드/번호, 또는 URL)")
+        var parent: String
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let (projectId, postId) = try await client.resolveTask(identifier)
+            let (parentProjectId, parentPostId) = try await client.resolveTask(parent)
+
+            guard parentProjectId == projectId else {
+                throw ValidationError("상위 태스크가 다른 프로젝트에 있습니다. 같은 프로젝트의 태스크만 상위로 지정할 수 있습니다.")
+            }
+            guard parentPostId != postId else {
+                throw ValidationError("자기 자신을 상위 태스크로 지정할 수 없습니다.")
+            }
+
+            try await client.setPostParent(projectId: projectId, postId: postId, parentPostId: parentPostId)
+
+            print("상위 태스크 설정 완료: \(postId) → 상위 \(parentPostId)")
         }
     }
 

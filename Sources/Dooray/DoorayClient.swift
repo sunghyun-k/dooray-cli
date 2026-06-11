@@ -220,7 +220,8 @@ final class DoorayClient: Sendable {
         priority: String? = nil,
         dueDate: String? = nil,
         milestoneId: String? = nil,
-        tagIds: [String]? = nil
+        tagIds: [String]? = nil,
+        parentPostId: String? = nil
     ) async throws -> String {
         var dict: [String: Any] = ["subject": subject]
 
@@ -240,6 +241,7 @@ final class DoorayClient: Sendable {
         if let dueDate { dict["dueDateFlag"] = true; dict["dueDate"] = dueDate }
         if let milestoneId { dict["milestoneId"] = milestoneId }
         if let tagIds { dict["tagIds"] = tagIds }
+        if let parentPostId { dict["parentPostId"] = parentPostId }
 
         let response: DoorayResponse<CreateResult> = try await mutate(method: .post,
             path: "/project/v1/projects/\(projectId)/posts",
@@ -266,6 +268,13 @@ final class DoorayClient: Sendable {
         let _: DoorayResponse<Post> = try await mutate(method: .put,
             path: "/project/v1/projects/\(projectId)/posts/\(postId)",
             jsonData: jsonData(dict)
+        )
+    }
+
+    func setPostParent(projectId: String, postId: String, parentPostId: String) async throws {
+        let _: DoorayResponse<CreateResult> = try await mutate(method: .post,
+            path: "/project/v1/projects/\(projectId)/posts/\(postId)/set-parent-post",
+            jsonData: jsonData(["parentPostId": parentPostId])
         )
     }
 
