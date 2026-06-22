@@ -29,14 +29,17 @@ dooray-cli project members <프로젝트코드>
 # 태스크 조회 (ID, 프로젝트코드/번호, URL 모두 지원) — 하위 태스크 목록 포함
 dooray-cli task get <식별자>
 
+# 본문(마크다운)만 출력 — 파일 저장 후 편집·재업데이트 라운드트립 용도
+dooray-cli task get <식별자> --body-only > task.md
+
 # 태스크 목록
 dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-by me|멤버ID,...] [--created-at today|thisweek|prev-Nd|next-Nd|ISO8601~ISO8601] [--page 0]
 
 # 태스크 생성 (--parent 지정 시 하위 태스크로 생성)
 dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID] [--parent 상위태스크식별자]
 
-# 태스크 수정
-dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--body-file 본문.md] [--priority high]
+# 태스크 수정 (--body-mime 미지정 시 기존 본문 형식 자동 보존)
+dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--body-file 본문.md] [--body-mime text/html] [--priority high]
 
 # 기존 태스크를 하위 태스크로 연결 (같은 프로젝트 내에서만, 1단계 계층만 지원)
 dooray-cli task set-parent <식별자> <상위태스크식별자>
@@ -90,6 +93,17 @@ dooray-cli file upload <식별자> <파일경로> [파일경로...] [--inline]
 ```bash
 dooray-cli comment create my-project/123 "결과 스크린샷: ![결과](./screenshot.png)"
 ```
+
+### 본문 라운드트립 (조회 → 편집 → 재업데이트)
+
+```bash
+dooray-cli task get my-project/123 --body-only > task.md   # 본문만 저장
+# task.md 편집
+dooray-cli task update my-project/123 --body-file task.md   # 다시 반영
+```
+
+- `--body-only` 출력은 `task update --body-file` 입력과 동일 형식이라 변환 없이 되돌릴 수 있음
+- `task update`는 `--body-mime` 미지정 시 기존 본문 형식을 보존. 본문이 HTML 등 비마크다운이면 `--body-only` 출력 시 stderr 경고가 뜨며, 이땐 `--body-mime`으로 원본 형식을 맞춰야 함
 
 ## 태스크 식별자 형식
 

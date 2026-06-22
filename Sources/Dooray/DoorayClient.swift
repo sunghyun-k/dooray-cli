@@ -258,11 +258,12 @@ final class DoorayClient: Sendable {
         postId: String,
         subject: String? = nil,
         bodyContent: String? = nil,
+        bodyMimeType: String = "text/x-markdown",
         priority: String? = nil
     ) async throws {
         var dict: [String: Any] = [:]
         if let subject { dict["subject"] = subject }
-        if let bodyContent { dict["body"] = ["content": bodyContent, "mimeType": "text/x-markdown"] }
+        if let bodyContent { dict["body"] = ["content": bodyContent, "mimeType": bodyMimeType] }
         if let priority { dict["priority"] = priority }
 
         let _: DoorayResponse<Post> = try await mutate(method: .put,

@@ -86,10 +86,23 @@ struct TaskCommand: AsyncParsableCommand {
         @Argument(help: "태스크 ID, 프로젝트코드/번호, 또는 URL")
         var identifier: String
 
+        @Flag(name: .long, help: "본문(마크다운)만 출력 — 파일로 저장 후 편집·재업데이트하는 용도 (예: > task.md)")
+        var bodyOnly = false
+
         func run() async throws {
             let client = try DoorayClient()
             let (projectId, postId) = try await client.resolveTask(identifier)
             let post = try await client.getPostWithProject(projectId: projectId, postId: postId)
+
+            if bodyOnly {
+                let mimeType = post.body?.mimeType
+                if let mimeType, mimeType != "text/x-markdown" {
+                    printError("경고: 이 본문의 형식은 '\(mimeType)' 입니다. 마크다운으로 편집해 재업데이트하면 깨질 수 있습니다.")
+                    printError("      재업데이트 시 `task update --body-mime \(mimeType)` 로 원본 형식을 유지하세요.")
+                }
+                print(post.body?.content ?? "")
+                return
+            }
 
             // 단건 조회 API 는 subTasks 를 응답에 포함하지 않으므로 parentPostId 필터로 별도 조회한다.
             let subPosts = try await client.listPosts(
@@ -252,6 +265,9 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "본문으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준)")
         var bodyFile: String?
 
+        @Option(name: .long, help: "본문 형식 (text/x-markdown 또는 text/html). 미지정 시 기존 본문 형식을 유지")
+        var bodyMime: String?
+
         @Option(name: .shortAndLong, help: "우선순위")
         var priority: String?
 
@@ -266,10 +282,17 @@ struct TaskCommand: AsyncParsableCommand {
             let (projectId, postId) = try await client.resolveTask(identifier)
 
             var bodyContent: String?
+            var bodyMimeType = "text/x-markdown"
             if let (content, baseDir) = try loadMarkdownBody(text: body, file: bodyFile) {
                 bodyContent = try await resolveInlineImages(in: content, baseDir: baseDir) { fileURL in
                     print("이미지 업로드 중: \(fileURL.lastPathComponent)...")
                     return try await client.uploadFile(projectId: projectId, postId: postId, fileURL: fileURL, inline: true)
+                }
+                // 본문 형식: --body-mime 우선, 미지정 시 기존 본문 형식을 보존해 라운드트립 시 깨짐 방지
+                if let bodyMime {
+                    bodyMimeType = bodyMime
+                } else if let existing = try await client.getPost(postId: postId).body?.mimeType {
+                    bodyMimeType = existing
                 }
             }
 
@@ -278,6 +301,7 @@ struct TaskCommand: AsyncParsableCommand {
                 postId: postId,
                 subject: subject,
                 bodyContent: bodyContent,
+                bodyMimeType: bodyMimeType,
                 priority: priority
             )
 

@@ -1,5 +1,10 @@
 import Foundation
 
+/// 표준 에러로 메시지 출력 (stdout 본문 출력과 섞이지 않도록 경고/진단용)
+func printError(_ message: String) {
+    FileHandle.standardError.write(Data((message + "\n").utf8))
+}
+
 /// 19자리 숫자 ID 패턴
 nonisolated(unsafe) let doorayIdPattern = /^\d{19}$/
 
