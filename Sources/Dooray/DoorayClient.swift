@@ -30,27 +30,56 @@ final class DoorayClient: Sendable {
         path: String,
         parameters: [String: String] = [:]
     ) async throws -> DoorayResponse<T> {
+        // validate()를 걸지 않는다 — 4xx/5xx 응답 본문에 담긴 두레이 resultMessage를
+        // 읽어 사용자에게 전달해야 하기 때문이다. 상태 코드 판정은 decodeResponse가 한다.
         let dataTask = session.request(
             "\(baseURL)\(path)",
             parameters: parameters,
             encoder: URLEncodedFormParameterEncoder.default,
             headers: headers
-        ).validate()
+        )
 
         let dataResponse = await dataTask.serializingData().response
         guard let data = dataResponse.value else {
             throw DoorayError.networkError(dataResponse.error?.localizedDescription ?? "Unknown error")
         }
 
+        return try decodeResponse(data: data, statusCode: dataResponse.response?.statusCode ?? 0, path: path)
+    }
+
+    /// 응답 본문을 디코딩하고, 실패 응답이면 두레이가 내려준 resultMessage를 담아 오류를 던진다.
+    private func decodeResponse<T: Decodable & Sendable>(
+        data: Data,
+        statusCode: Int,
+        path: String
+    ) throws -> DoorayResponse<T> {
+        let decoded: DoorayResponse<T>
         do {
-            return try JSONDecoder().decode(DoorayResponse<T>.self, from: data)
+            decoded = try JSONDecoder().decode(DoorayResponse<T>.self, from: data)
         } catch {
+            // 실패 응답은 result 스키마가 달라 디코딩이 깨지므로 헤더만 먼저 읽어 본다.
+            if let header = try? JSONDecoder().decode(HeaderOnlyResponse.self, from: data).header,
+               !header.isSuccessful {
+                throw DoorayError.apiError(statusCode: statusCode, message: header.readableMessage)
+            }
             let raw = String(data: data, encoding: .utf8) ?? ""
             throw DoorayError.apiError(
-                statusCode: dataResponse.response?.statusCode ?? 0,
+                statusCode: statusCode,
                 message: "디코딩 실패 (\(path)): \(error)\n\n응답: \(raw.prefix(500))"
             )
         }
+
+        guard decoded.header.isSuccessful else {
+            throw DoorayError.apiError(statusCode: statusCode, message: decoded.header.readableMessage)
+        }
+        guard (200..<300).contains(statusCode) else {
+            throw DoorayError.apiError(statusCode: statusCode, message: decoded.header.readableMessage)
+        }
+        return decoded
+    }
+
+    private struct HeaderOnlyResponse: Decodable, Sendable {
+        let header: ResponseHeader
     }
 
     private func mutate<T: Decodable & Sendable>(
@@ -63,10 +92,14 @@ final class DoorayClient: Sendable {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = jsonData
 
-        return try await session.request(urlRequest)
-            .validate()
-            .serializingDecodable(DoorayResponse<T>.self)
-            .value
+        // get과 같은 이유로 validate()를 걸지 않는다 — 400 응답의 resultMessage
+        // (예: USER_INVALID_TAG_MANDATORY_PREFIX)를 그대로 사용자에게 보여주기 위함.
+        let dataResponse = await session.request(urlRequest).serializingData().response
+        guard let data = dataResponse.value else {
+            throw DoorayError.networkError(dataResponse.error?.localizedDescription ?? "Unknown error")
+        }
+
+        return try decodeResponse(data: data, statusCode: dataResponse.response?.statusCode ?? 0, path: path)
     }
 
     // MARK: - JSON Helpers
@@ -259,12 +292,14 @@ final class DoorayClient: Sendable {
         subject: String? = nil,
         bodyContent: String? = nil,
         bodyMimeType: String = "text/x-markdown",
-        priority: String? = nil
+        priority: String? = nil,
+        tagIds: [String]? = nil
     ) async throws {
         var dict: [String: Any] = [:]
         if let subject { dict["subject"] = subject }
         if let bodyContent { dict["body"] = ["content": bodyContent, "mimeType": bodyMimeType] }
         if let priority { dict["priority"] = priority }
+        if let tagIds { dict["tagIds"] = tagIds }
 
         let _: DoorayResponse<Post> = try await mutate(method: .put,
             path: "/project/v1/projects/\(projectId)/posts/\(postId)",
@@ -299,6 +334,93 @@ final class DoorayClient: Sendable {
             path: "/project/v1/projects/\(projectId)/tags",
             parameters: ["page": "\(page)", "size": "\(size)"]
         )
+    }
+
+    /// 프로젝트의 모든 태그를 페이지 끝까지 모아서 반환한다.
+    func listAllTags(projectId: String) async throws -> [Tag] {
+        var all: [Tag] = []
+        for page in 0..<20 {
+            let tags = try await listTags(projectId: projectId, page: page, size: 100)
+            if tags.isEmpty { break }
+            all += tags
+            if tags.count < 100 { break }
+        }
+        return all
+    }
+
+    /// `--tag` 로 받은 태그 이름 또는 ID 목록을 태그 ID 목록으로 변환한다.
+    /// 이름 비교는 대소문자와 공백을 무시하며, 그룹 접두사를 생략한 짧은 이름(예: iOS)도 허용한다.
+    /// 해석에 실패하면 프로젝트의 선택 가능한 태그를 함께 알려 준다.
+    func resolveTagIds(projectId: String, specs: [String]) async throws -> [String] {
+        guard !specs.isEmpty else { return [] }
+        let tags = try await listAllTags(projectId: projectId)
+
+        func normalize(_ value: String) -> String {
+            value.lowercased().filter { !$0.isWhitespace }
+        }
+
+        var resolved: [String] = []
+        for spec in specs {
+            let key = normalize(spec)
+            if let byId = tags.first(where: { $0.id == spec }) {
+                resolved.append(byId.id)
+                continue
+            }
+            if let byName = tags.first(where: { normalize($0.name ?? "") == key }) {
+                resolved.append(byName.id)
+                continue
+            }
+            // 그룹 접두사를 생략한 짧은 이름 (예: "iOS" → "Platform: iOS")
+            let shortMatches = tags.filter { tag in
+                guard let name = tag.name, let group = tag.tagGroup?.name else { return false }
+                let stripped = name.dropFirst(group.count).drop(while: { $0 == ":" || $0.isWhitespace })
+                return normalize(String(stripped)) == key
+            }
+            if shortMatches.count == 1 {
+                resolved.append(shortMatches[0].id)
+                continue
+            }
+            if shortMatches.count > 1 {
+                let candidates = shortMatches.compactMap(\.name).joined(separator: ", ")
+                throw DoorayError.invalidInput(
+                    "태그 이름이 모호합니다: \(spec)\n후보: \(candidates)\n전체 이름으로 지정하세요."
+                )
+            }
+            let available = tags.compactMap(\.name).sorted().joined(separator: ", ")
+            throw DoorayError.invalidInput(
+                "태그를 찾을 수 없습니다: \(spec)\n사용 가능한 태그: \(available)"
+            )
+        }
+        return Array(NSOrderedSet(array: resolved)) as? [String] ?? resolved
+    }
+
+    /// 필수 태그 그룹이 비어 있으면 어떤 그룹에 무엇을 지정해야 하는지 알려 주는 오류를 던진다.
+    /// 두레이 서버는 USER_INVALID_TAG_MANDATORY_PREFIX 만 반환해 어떤 그룹인지 알려 주지 않는다.
+    func validateMandatoryTags(projectId: String, tagIds: [String]) async throws {
+        let tags = try await listAllTags(projectId: projectId)
+        let selectedGroupIds = Set(tags.filter { tagIds.contains($0.id) }.compactMap { $0.tagGroup?.id })
+
+        var missing: [(group: String, options: [String])] = []
+        var seenGroups = Set<String>()
+        for tag in tags {
+            guard let group = tag.tagGroup, group.mandatory == true else { continue }
+            guard !selectedGroupIds.contains(group.id), !seenGroups.contains(group.id) else { continue }
+            seenGroups.insert(group.id)
+            let options = tags
+                .filter { $0.tagGroup?.id == group.id }
+                .compactMap(\.name)
+                .sorted()
+            missing.append((group.name ?? group.id, options))
+        }
+
+        guard !missing.isEmpty else { return }
+        let detail = missing
+            .map { "  [\($0.group)] \($0.options.joined(separator: ", "))" }
+            .joined(separator: "\n")
+        throw DoorayError.invalidInput("""
+            이 프로젝트는 다음 태그 그룹을 필수로 요구합니다. --tag 로 각 그룹에서 하나 이상 지정하세요.
+            \(detail)
+            """)
     }
 
     // MARK: - Logs (Comments)

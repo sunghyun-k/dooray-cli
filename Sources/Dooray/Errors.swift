@@ -7,6 +7,8 @@ enum DoorayError: Error, CustomStringConvertible {
     case invalidIdentifier(String)
     case projectNotFound(String)
     case taskNotFound(String)
+    /// 요청을 보내기 전에 CLI가 걸러낸 입력 오류 (태그 이름 오타, 필수 태그 누락 등)
+    case invalidInput(String)
 
     var description: String {
         switch self {
@@ -22,6 +24,8 @@ enum DoorayError: Error, CustomStringConvertible {
             "프로젝트를 찾을 수 없습니다: \(code)"
         case .taskNotFound(let id):
             "태스크를 찾을 수 없습니다: \(id)"
+        case .invalidInput(let message):
+            message
         }
     }
 }

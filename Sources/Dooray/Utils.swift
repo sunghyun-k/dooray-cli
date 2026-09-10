@@ -111,6 +111,25 @@ func loadMarkdownBody(text: String?, file: String?) throws -> (content: String, 
     return nil
 }
 
+/// 마크다운의 이미지 참조 중 실제로 업로드해야 하는 로컬 파일 경로만 골라 반환한다.
+/// resolveInlineImages와 같은 판정 기준을 쓰므로, 업로드가 필요한지 미리 알아내는 데 사용한다.
+func localImageURLs(in content: String, baseDir: URL) -> [URL] {
+    let imagePattern = /!\[([^\]]*)\]\(([^)\n]+)\)/
+    var found: [URL] = []
+    for match in content.matches(of: imagePattern) {
+        let path = String(match.2).trimmingCharacters(in: .whitespaces)
+        if path.contains("://") || path.hasPrefix("data:") || path.hasPrefix("/files/") { continue }
+        let expanded = (path as NSString).expandingTildeInPath
+        let fileURL = expanded.hasPrefix("/")
+            ? URL(fileURLWithPath: expanded)
+            : baseDir.appendingPathComponent(expanded).standardizedFileURL
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            found.append(fileURL)
+        }
+    }
+    return found
+}
+
 /// 마크다운에서 로컬 이미지 참조(![대체텍스트](경로))를 찾아 업로드 후 /files/{fileId}로 치환
 /// URL, /files/ 참조, 디스크에 존재하지 않는 경로는 그대로 둔다.
 func resolveInlineImages(

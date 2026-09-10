@@ -35,11 +35,11 @@ dooray-cli task get <식별자> --body-only > task.md
 # 태스크 목록
 dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-by me|멤버ID,...] [--created-at today|thisweek|prev-Nd|next-Nd|ISO8601~ISO8601] [--page 0]
 
-# 태스크 생성 (--parent 지정 시 하위 태스크로 생성)
-dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID] [--parent 상위태스크식별자]
+# 태스크 생성 (--parent 지정 시 하위 태스크로 생성, 태그 필수 프로젝트는 --tag 지정 필요)
+dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 멤버ID] [--parent 상위태스크식별자] [--tag "Platform: iOS" --tag "업무: Document"]
 
-# 태스크 수정 (--body-mime 미지정 시 기존 본문 형식 자동 보존)
-dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--body-file 본문.md] [--body-mime text/html] [--priority high]
+# 태스크 수정 (--body-mime 미지정 시 기존 본문 형식 자동 보존, --tag 는 태그 목록을 교체)
+dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--body-file 본문.md] [--body-mime text/html] [--priority high] [--tag iOS,Document]
 
 # 기존 태스크를 하위 태스크로 연결 (같은 프로젝트 내에서만, 1단계 계층만 지원)
 dooray-cli task set-parent <식별자> <상위태스크식별자>
@@ -66,7 +66,7 @@ dooray-cli comment update <식별자> <댓글ID> "수정할 내용"
 # 워크플로우 목록 (상태 변경시 ID 확인용)
 dooray-cli workflow list <프로젝트코드>
 
-# 태그 목록
+# 태그 목록 (id,name,color,group,mandatory)
 dooray-cli tag list <프로젝트코드> [--page 0]
 ```
 
@@ -82,6 +82,12 @@ dooray-cli file download <식별자> [--output 저장경로] [파일ID]
 dooray-cli file upload <식별자> <파일경로> [파일경로...] [--inline]
 ```
 
+### 태그
+
+`--tag` 는 태그 이름 또는 ID를 받는다. 쉼표로 묶거나 여러 번 지정할 수 있고, 그룹 접두사를 뺀 짧은 이름(`iOS`)도 유일하면 인식한다. `task update --tag` 는 태그 목록을 교체한다.
+
+태그 그룹이 필수인 프로젝트에서는 태그 없이 생성할 수 없다. 이 경우 CLI가 요청 전에 필수 그룹과 선택 가능한 태그를 알려 주므로, 그 목록에서 골라 `--tag` 로 지정한다. `tag list` 의 `mandatory` 컬럼으로도 확인할 수 있다.
+
 ### 인라인 이미지
 
 본문/댓글 마크다운에서 `![이름](로컬경로)`로 로컬 이미지를 참조하면 자동으로 인라인 업로드되고 `/files/{fileId}`로 치환됩니다.
@@ -89,6 +95,7 @@ dooray-cli file upload <식별자> <파일경로> [파일경로...] [--inline]
 - 텍스트 입력(`--body`, 댓글 내용): 상대경로는 현재 디렉토리 기준
 - `--body-file`: 상대경로는 마크다운 파일 위치 기준
 - URL, 기존 `/files/` 참조, 존재하지 않는 경로는 그대로 유지
+- 파일 업로드 API가 태스크 종속이라, `task create` 는 로컬 이미지가 있으면 본문을 비워 태스크를 먼저 만들고 업로드 후 본문을 채운다. 업로드 실패 시에도 깨진 로컬 경로가 본문에 남지 않는다
 
 ```bash
 dooray-cli comment create my-project/123 "결과 스크린샷: ![결과](./screenshot.png)"

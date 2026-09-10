@@ -12,6 +12,29 @@ struct ResponseHeader: Decodable, Sendable {
     let resultCode: Int
     let resultMessage: String?
     let isSuccessful: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case resultCode, resultMessage, isSuccessful
+    }
+
+    // 실패 응답은 header에 resultCode/isSuccessful을 생략하는 경우가 있어 기본값을 둔다.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        resultCode = try container.decodeIfPresent(Int.self, forKey: .resultCode) ?? -1
+        resultMessage = try container.decodeIfPresent(String.self, forKey: .resultMessage)
+        isSuccessful = try container.decodeIfPresent(Bool.self, forKey: .isSuccessful) ?? false
+    }
+
+    /// 두레이는 메시지가 없을 때 "null" 문자열이나 빈 문자열을 내려주기도 한다.
+    var readableMessage: String {
+        guard let message = resultMessage,
+              !message.isEmpty,
+              message != "null"
+        else {
+            return "두레이가 오류 메시지를 반환하지 않았습니다. (resultCode: \(resultCode))"
+        }
+        return message
+    }
 }
 
 // MARK: - Project
@@ -173,6 +196,18 @@ struct Tag: Decodable, Sendable {
     let name: String?
     let color: String?
     let tagGroupId: String?
+    /// 태그 목록 API는 소속 그룹과 그룹의 필수 여부를 함께 반환한다.
+    let tagGroup: TagGroupRef?
+}
+
+/// 태그에 포함되어 오는 소속 그룹 정보
+struct TagGroupRef: Decodable, Sendable {
+    let id: String
+    let name: String?
+    /// 이 그룹의 태그를 반드시 하나 이상 지정해야 하는지
+    let mandatory: Bool?
+    /// 이 그룹에서 하나만 선택할 수 있는지
+    let selectOne: Bool?
 }
 
 struct TagGroup: Decodable, Sendable {

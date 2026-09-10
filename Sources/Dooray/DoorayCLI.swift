@@ -203,6 +203,9 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "상위 태스크 (태스크 ID, 프로젝트코드/번호, 또는 URL) — 하위 태스크로 생성")
         var parent: String?
 
+        @Option(name: .long, help: "태그 이름 또는 ID (쉼표 구분, 여러 번 지정 가능). 태그가 필수인 프로젝트는 반드시 지정해야 한다")
+        var tag: [String] = []
+
         func validate() throws {
             if body != nil && bodyFile != nil {
                 throw ValidationError("--body와 --body-file은 동시에 사용할 수 없습니다.")
@@ -223,26 +226,47 @@ struct TaskCommand: AsyncParsableCommand {
             }
 
             let usersTo = splitComma(to)
+            let tagSpecs = tag.flatMap { splitComma($0) ?? [] }
+            let tagIds = try await client.resolveTagIds(projectId: projectId, specs: tagSpecs)
+            // 서버는 필수 태그가 빠지면 USER_INVALID_TAG_MANDATORY_PREFIX 만 반환하므로
+            // 어떤 그룹이 필요한지 미리 알려 준다.
+            try await client.validateMandatoryTags(projectId: projectId, tagIds: tagIds)
+
             let markdownBody = try loadMarkdownBody(text: body, file: bodyFile)
+
+            // 두레이 파일 업로드는 태스크에 종속된 엔드포인트라 생성 전에는 업로드할 수 없다.
+            // 따라서 로컬 이미지가 있으면 본문 없이 먼저 만들고, 업로드한 뒤 본문을 채운다.
+            // 원본 마크다운을 그대로 넣고 나중에 고치면 첨부 실패 시 깨진 경로가 그대로 남는다.
+            let pendingImages = markdownBody.map { localImageURLs(in: $0.content, baseDir: $0.baseDir) } ?? []
+            let deferBody = !pendingImages.isEmpty
 
             let taskId = try await client.createPost(
                 projectId: projectId,
                 subject: subject,
-                bodyContent: markdownBody?.content,
+                bodyContent: deferBody ? "" : markdownBody?.content,
                 usersTo: usersTo,
                 priority: priority,
                 dueDate: dueDate,
+                tagIds: tagIds.isEmpty ? nil : tagIds,
                 parentPostId: parentPostId
             )
 
-            // 인라인 이미지 업로드는 postId가 필요하므로 생성 후 본문을 치환해 갱신한다.
-            if let (content, baseDir) = markdownBody {
-                let resolved = try await resolveInlineImages(in: content, baseDir: baseDir) { fileURL in
-                    print("이미지 업로드 중: \(fileURL.lastPathComponent)...")
-                    return try await client.uploadFile(projectId: projectId, postId: taskId, fileURL: fileURL, inline: true)
-                }
-                if resolved != content {
+            if deferBody, let (content, baseDir) = markdownBody {
+                printError("이미지 \(pendingImages.count)개 업로드 후 본문을 채웁니다 (태스크 \(taskId))")
+                do {
+                    let resolved = try await resolveInlineImages(in: content, baseDir: baseDir) { fileURL in
+                        printError("이미지 업로드 중: \(fileURL.lastPathComponent)...")
+                        return try await client.uploadFile(
+                            projectId: projectId, postId: taskId, fileURL: fileURL, inline: true
+                        )
+                    }
                     try await client.updatePost(projectId: projectId, postId: taskId, bodyContent: resolved)
+                } catch {
+                    printError("""
+                        태스크는 생성되었지만 본문 업로드에 실패했습니다: \(taskId)
+                        본문만 다시 올리려면: dooray-cli task update \(taskId) --body-file <파일>
+                        """)
+                    throw error
                 }
             }
 
@@ -271,6 +295,9 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .shortAndLong, help: "우선순위")
         var priority: String?
 
+        @Option(name: .long, help: "태그 이름 또는 ID (쉼표 구분, 여러 번 지정 가능). 지정한 목록으로 태그를 교체한다")
+        var tag: [String] = []
+
         func validate() throws {
             if body != nil && bodyFile != nil {
                 throw ValidationError("--body와 --body-file은 동시에 사용할 수 없습니다.")
@@ -280,6 +307,14 @@ struct TaskCommand: AsyncParsableCommand {
         func run() async throws {
             let client = try DoorayClient()
             let (projectId, postId) = try await client.resolveTask(identifier)
+
+            let tagSpecs = tag.flatMap { splitComma($0) ?? [] }
+            let tagIds = tagSpecs.isEmpty
+                ? nil
+                : try await client.resolveTagIds(projectId: projectId, specs: tagSpecs)
+            if let tagIds {
+                try await client.validateMandatoryTags(projectId: projectId, tagIds: tagIds)
+            }
 
             var bodyContent: String?
             var bodyMimeType = "text/x-markdown"
@@ -302,7 +337,8 @@ struct TaskCommand: AsyncParsableCommand {
                 subject: subject,
                 bodyContent: bodyContent,
                 bodyMimeType: bodyMimeType,
-                priority: priority
+                priority: priority,
+                tagIds: tagIds
             )
 
             print("태스크 수정 완료: \(postId)")
@@ -525,9 +561,11 @@ struct TagCommand: AsyncParsableCommand {
             let projectId = try await client.resolveProjectId(project)
             let tags = try await client.listTags(projectId: projectId, page: page)
 
-            print("id,name,color")
+            print("id,name,color,group,mandatory")
             for t in tags {
-                print("\(t.id),\(csvEscape(t.name ?? "")),\(t.color ?? "")")
+                let group = t.tagGroup?.name ?? ""
+                let mandatory = t.tagGroup?.mandatory == true ? "true" : "false"
+                print("\(t.id),\(csvEscape(t.name ?? "")),\(t.color ?? ""),\(csvEscape(group)),\(mandatory)")
             }
         }
     }
