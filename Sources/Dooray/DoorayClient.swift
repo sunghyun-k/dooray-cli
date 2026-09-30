@@ -32,14 +32,14 @@ final class DoorayClient: Sendable {
     ) async throws -> DoorayResponse<T> {
         // validate()를 걸지 않는다 — 4xx/5xx 응답 본문에 담긴 두레이 resultMessage를
         // 읽어 사용자에게 전달해야 하기 때문이다. 상태 코드 판정은 decodeResponse가 한다.
-        let dataTask = session.request(
-            "\(baseURL)\(path)",
-            parameters: parameters,
-            encoder: URLEncodedFormParameterEncoder.default,
-            headers: headers
-        )
-
-        let dataResponse = await dataTask.serializingData().response
+        let dataResponse = await withRateLimitRetry {
+            await self.session.request(
+                "\(self.baseURL)\(path)",
+                parameters: parameters,
+                encoder: URLEncodedFormParameterEncoder.default,
+                headers: self.headers
+            ).serializingData().response
+        }
         guard let data = dataResponse.value else {
             throw DoorayError.networkError(dataResponse.error?.localizedDescription ?? "Unknown error")
         }
@@ -78,6 +78,21 @@ final class DoorayClient: Sendable {
         return decoded
     }
 
+    /// 두레이 요청 제한(순간 20회, 초당 5회 회복)에 걸리면 429 가 온다. 잠시 기다렸다 다시 보낸다.
+    /// 여러 건을 연달아 조회하는 명령(project members 등)이 일부 결과를 조용히 잃지 않도록 한다.
+    private func withRateLimitRetry(
+        _ send: () async -> AFDataResponse<Data>
+    ) async -> AFDataResponse<Data> {
+        var response = await send()
+        for attempt in 1...5 where response.response?.statusCode == 429 {
+            let retryAfter = response.response?.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
+            let delay = retryAfter ?? 0.5 * Double(attempt)
+            try? await Task.sleep(for: .seconds(delay))
+            response = await send()
+        }
+        return response
+    }
+
     private struct HeaderOnlyResponse: Decodable, Sendable {
         let header: ResponseHeader
     }
@@ -94,7 +109,9 @@ final class DoorayClient: Sendable {
 
         // get과 같은 이유로 validate()를 걸지 않는다 — 400 응답의 resultMessage
         // (예: USER_INVALID_TAG_MANDATORY_PREFIX)를 그대로 사용자에게 보여주기 위함.
-        let dataResponse = await session.request(urlRequest).serializingData().response
+        let dataResponse = await withRateLimitRetry {
+            await self.session.request(urlRequest).serializingData().response
+        }
         guard let data = dataResponse.value else {
             throw DoorayError.networkError(dataResponse.error?.localizedDescription ?? "Unknown error")
         }
@@ -165,6 +182,14 @@ final class DoorayClient: Sendable {
         return member
     }
 
+    /// 멘션 링크(dooray://{조직ID}/members/…)에 쓰는 조직 ID
+    func organizationId() async throws -> String {
+        guard let id = try await getMemberMe().defaultOrganization?.id else {
+            throw DoorayError.apiError(statusCode: 0, message: "조직 ID 를 가져올 수 없습니다.")
+        }
+        return id
+    }
+
     func getMember(id: String) async throws -> OrganizationMember {
         let response: DoorayResponse<OrganizationMember> = try await get(path: "/common/v1/members/\(id)")
         guard let member = response.result else {
@@ -173,7 +198,29 @@ final class DoorayClient: Sendable {
         return member
     }
 
+    /// 조직 멤버 검색. name·externalEmailAddresses·userCode 중 하나로 찾는다.
+    /// userCode 는 접두사 일치로 동작하므로 호출하는 쪽에서 정확히 일치하는지 다시 거른다.
+    func searchMembers(name: String? = nil, email: String? = nil, userCode: String? = nil) async throws -> [OrganizationMember] {
+        var params: [String: String] = ["size": "100"]
+        if let name { params["name"] = name }
+        if let email { params["externalEmailAddresses"] = email }
+        if let userCode { params["userCode"] = userCode }
+        let response: DoorayResponse<[OrganizationMember]> = try await get(path: "/common/v1/members", parameters: params)
+        return response.result ?? []
+    }
+
     // MARK: - Members
+
+    /// 프로젝트 멤버를 페이지 끝까지 모은다.
+    func getAllProjectMembers(projectId: String) async throws -> [Member] {
+        var all: [Member] = []
+        for page in 0..<20 {
+            let members = try await getProjectMembers(projectId: projectId, page: page, size: 100)
+            all += members
+            if members.count < 100 { break }
+        }
+        return all
+    }
 
     func getProjectMembers(projectId: String, page: Int = 0, size: Int = 20) async throws -> [Member] {
         try await getList(
@@ -234,6 +281,33 @@ final class DoorayClient: Sendable {
             path: "/project/v1/projects/\(projectId)/posts", parameters: params
         )
         return response.result ?? []
+    }
+
+    /// 업무 조회 응답의 result 를 가공하지 않은 JSON 으로 반환한다 (`task get --json`).
+    func getRawPostJSON(projectId: String, postId: String) async throws -> String {
+        let path = "/project/v1/projects/\(projectId)/posts/\(postId)"
+        // 응답 검증·오류 메시지는 기존 경로를 그대로 쓰고, 성공하면 원본을 다시 받아 result 만 꺼낸다.
+        _ = try await getPostWithProject(projectId: projectId, postId: postId)
+        let dataResponse = await session.request("\(baseURL)\(path)", headers: headers).serializingData().response
+        guard let data = dataResponse.value,
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = object["result"]
+        else {
+            throw DoorayError.networkError(dataResponse.error?.localizedDescription ?? "응답을 읽을 수 없습니다.")
+        }
+        let pretty = try JSONSerialization.data(
+            withJSONObject: result, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        return String(decoding: pretty, as: UTF8.self)
+    }
+
+    /// 담당자·참조자를 바꾼다. 두레이는 users 객체를 통째로 교체하므로(보내지 않은 to/cc 는 비워진다)
+    /// 항상 to 와 cc 를 함께 보낸다.
+    func setPostUsers(projectId: String, postId: String, to: [[String: Any]], cc: [[String: Any]]) async throws {
+        let _: DoorayResponse<Post> = try await mutate(method: .put,
+            path: "/project/v1/projects/\(projectId)/posts/\(postId)",
+            jsonData: jsonData(["users": ["to": to, "cc": cc]])
+        )
     }
 
     func getPostByNumber(projectId: String, postNumber: String) async throws -> Post? {
@@ -587,13 +661,7 @@ final class DoorayClient: Sendable {
             return (projectId, post.id)
 
         case .projectAndTask(let projectCode, let taskNumber):
-            guard let project = try await findProjectByCode(projectCode) else {
-                throw DoorayError.projectNotFound(projectCode)
-            }
-            guard let post = try await getPostByNumber(projectId: project.id, postNumber: taskNumber) else {
-                throw DoorayError.taskNotFound("\(projectCode)/\(taskNumber)")
-            }
-            return (project.id, post.id)
+            return try await resolveTask(projectCode: projectCode, taskNumber: taskNumber, label: identifier)
 
         case .url(let urlString):
             guard let parsed = parseDoorayURL(urlString) else {
@@ -603,13 +671,7 @@ final class DoorayClient: Sendable {
             case .projectIdAndPostId(let projectId, let postId):
                 return (projectId, postId)
             case .projectCodeAndNumber(let projectCode, let taskNumber):
-                guard let project = try await findProjectByCode(projectCode) else {
-                    throw DoorayError.projectNotFound(projectCode)
-                }
-                guard let post = try await getPostByNumber(projectId: project.id, postNumber: taskNumber) else {
-                    throw DoorayError.taskNotFound(urlString)
-                }
-                return (project.id, post.id)
+                return try await resolveTask(projectCode: projectCode, taskNumber: taskNumber, label: urlString)
             case .postId(let postId):
                 let post = try await getPost(postId: postId)
                 guard let projectId = post.project?.id else {
@@ -618,6 +680,20 @@ final class DoorayClient: Sendable {
                 return (projectId, post.id)
             }
         }
+    }
+
+    private func resolveTask(
+        projectCode: String,
+        taskNumber: String,
+        label: String
+    ) async throws -> (projectId: String, postId: String) {
+        guard let project = try await findProjectByCode(projectCode) else {
+            throw DoorayError.projectNotFound(projectCode)
+        }
+        guard let post = try await getPostByNumber(projectId: project.id, postNumber: taskNumber) else {
+            throw DoorayError.taskNotFound(label)
+        }
+        return (project.id, post.id)
     }
 
     func resolveProjectId(_ codeOrId: String) async throws -> String {

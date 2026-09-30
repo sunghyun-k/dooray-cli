@@ -100,6 +100,10 @@ func splitComma(_ value: String?) -> [String]? {
 /// --body(텍스트) 또는 --body-file(파일) 입력을 (본문, 이미지 상대경로 기준 디렉토리)로 변환
 /// 텍스트 입력은 현재 작업 디렉토리, 파일 입력은 해당 파일의 디렉토리를 기준으로 한다.
 func loadMarkdownBody(text: String?, file: String?) throws -> (content: String, baseDir: URL)? {
+    if file == "-" {
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        return (String(decoding: data, as: UTF8.self), URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+    }
     if let file {
         let url = URL(fileURLWithPath: (file as NSString).expandingTildeInPath)
         let content = try String(contentsOf: url, encoding: .utf8)
@@ -174,4 +178,50 @@ func csvEscape(_ value: String) -> String {
         return "\"\(cleaned.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
     return cleaned
+}
+
+extension Optional {
+    func asyncMap<U>(_ transform: (Wrapped) async throws -> U) async rethrows -> U? {
+        guard let self else { return nil }
+        return try await transform(self)
+    }
+}
+
+/// 옵션 형태가 아닌데 `-` 로 시작하는 위치 인자(댓글 `->@담당자 …` 등)를 `--` 뒤로 옮긴다.
+///
+/// ArgumentParser 는 `-` 로 시작하는 토큰을 짧은 옵션 묶음으로 읽는다. 그래서 `->[@홍길동](…) alpha 빌드에서 수정`
+/// 는 글자 중 `h` 때문에 `-h`(도움말)로 해석돼 도움말만 출력하고 종료 코드 0 으로 끝난다 — 댓글은
+/// 작성되지 않는데 성공처럼 보인다. 옵션처럼 생기지 않은 토큰(영문자 외 글자가 섞인 것)만 옮기고,
+/// 값을 받는 옵션 바로 뒤의 토큰은 그 옵션의 값이므로 건드리지 않는다.
+func escapeDashLeadingPositionals(_ arguments: [String]) -> [String] {
+    // 값을 받지 않는 플래그. 이 뒤에 오는 토큰은 옵션 값이 아니라 위치 인자다.
+    let flags: Set<String> = ["-h", "--help", "--body-only", "--json", "--mine", "--inline"]
+    func looksLikeOption(_ token: String) -> Bool {
+        token.wholeMatch(of: /--[A-Za-z][A-Za-z0-9-]*(=.*)?/) != nil
+            || token.wholeMatch(of: /-[A-Za-z]+/) != nil
+    }
+
+    var kept: [String] = []
+    var moved: [String] = []
+    for (index, token) in arguments.enumerated() {
+        if token == "--" {
+            kept += arguments[index...]
+            break
+        }
+        let previous = kept.last
+        let previousTakesValue = previous.map {
+            looksLikeOption($0) && !$0.contains("=") && !flags.contains($0)
+        } ?? false
+        if token.hasPrefix("-"), token != "-", !looksLikeOption(token), !previousTakesValue {
+            moved.append(token)
+        } else {
+            kept.append(token)
+        }
+    }
+    guard !moved.isEmpty else { return arguments }
+    if let separator = kept.firstIndex(of: "--") {
+        kept.insert(contentsOf: moved, at: separator + 1)
+        return kept
+    }
+    return kept + ["--"] + moved
 }

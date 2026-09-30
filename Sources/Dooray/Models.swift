@@ -115,6 +115,47 @@ struct PostUsers: Decodable, Sendable {
 struct PostUser: Decodable, Sendable {
     let type: String?
     let member: PostMember?
+    let group: PostGroup?
+    let emailUser: PostEmailUser?
+
+    /// 사람이 읽는 표시용 문자열. 멤버는 멘션·필터에 쓸 수 있도록 ID 를 함께 붙인다.
+    var displayName: String {
+        if let member {
+            return "\(member.name ?? "") (\(member.organizationMemberId ?? ""))"
+        }
+        if let group {
+            return "\(group.code ?? group.projectMemberGroupId ?? "") [그룹]"
+        }
+        if let emailUser {
+            return "\(emailUser.name ?? "") <\(emailUser.emailAddress ?? "")>"
+        }
+        return type ?? ""
+    }
+
+    /// 업무 수정(PUT) 요청에 되돌려 보낼 수 있는 형태. 응답 전용 필드(이름, workflow 등)는 뺀다.
+    var requestValue: [String: Any]? {
+        if let id = member?.organizationMemberId {
+            return ["type": "member", "member": ["organizationMemberId": id]]
+        }
+        if let id = group?.projectMemberGroupId {
+            return ["type": "group", "group": ["projectMemberGroupId": id]]
+        }
+        if let email = emailUser?.emailAddress {
+            return ["type": "emailUser", "emailUser": ["emailAddress": email, "name": emailUser?.name ?? ""]]
+        }
+        return nil
+    }
+}
+
+struct PostGroup: Decodable, Sendable {
+    let projectMemberGroupId: String?
+    let code: String?
+    let members: [PostMember]?
+}
+
+struct PostEmailUser: Decodable, Sendable {
+    let emailAddress: String?
+    let name: String?
 }
 
 struct PostMember: Decodable, Sendable {
@@ -246,6 +287,16 @@ struct OrganizationMember: Decodable, Sendable {
     let id: String
     let name: String?
     let emailAddress: String?
+    let userCode: String?
+    let externalEmailAddress: String?
+    /// 멘션 링크(dooray://{조직ID}/members/{멤버ID})에 쓰는 조직 ID. members/me 응답에만 있다.
+    let defaultOrganization: OrganizationRef?
+
+    var email: String? { externalEmailAddress ?? emailAddress }
+}
+
+struct OrganizationRef: Decodable, Sendable {
+    let id: String
 }
 
 // MARK: - File

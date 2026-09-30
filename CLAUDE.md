@@ -67,3 +67,8 @@ agent-browser get text body
 - `https://api.dooray.co.kr` (한국)
 - `https://api.gov-dooray.com` (정부)
 - `https://api.gov-dooray.co.kr` (정부/한국)
+
+## 실제 API 로 테스트할 때
+
+- 쓰기가 일어날 수 있는 명령(`task create/update`, `comment create/update`, `task set-*`, `file upload`)은 **사용자가 테스트용으로 허락한 프로젝트·업무에서만** 실행한다. 어디를 써도 되는지 모르면 먼저 묻는다. 인자 파싱만 확인하려는 경우도 예외가 아니다 — 파싱이 통과하면 그대로 쓰기가 나간다.
+- 다른 프로젝트(팀·QA 프로젝트 등)에는 조회 명령만 쓴다.

@@ -8,6 +8,7 @@ struct DoorayCLI: AsyncParsableCommand {
         abstract: "두레이 CLI",
         subcommands: [
             ProjectCommand.self,
+            MemberCommand.self,
             TaskCommand.self,
             CommentCommand.self,
             WorkflowCommand.self,
@@ -15,6 +16,10 @@ struct DoorayCLI: AsyncParsableCommand {
             FileCommand.self,
         ]
     )
+
+    static func main() async {
+        await main(escapeDashLeadingPositionals(Array(CommandLine.arguments.dropFirst())))
+    }
 }
 
 // MARK: - Project Commands
@@ -59,13 +64,68 @@ struct ProjectCommand: AsyncParsableCommand {
         func run() async throws {
             let client = try DoorayClient()
             let projectId = try await client.resolveProjectId(project)
-            let members = try await client.getProjectMembers(projectId: projectId)
+            let members = try await client.getAllProjectMembers(projectId: projectId)
+
+            // 프로젝트 멤버 API 는 ID 와 역할만 내려주므로 이름·이메일은 멤버 조회로 채운다.
+            // 한꺼번에 보내면 요청 제한에 걸려 일부가 빠지므로 동시 요청 수를 제한한다.
+            let ids = members.compactMap(\.organizationMemberId)
+            var details: [String: OrganizationMember] = [:]
+            for start in stride(from: 0, to: ids.count, by: 5) {
+                let batch = ids[start..<min(start + 5, ids.count)]
+                await withTaskGroup(of: (String, OrganizationMember?).self) { group in
+                    for id in batch {
+                        group.addTask { (id, try? await client.getMember(id: id)) }
+                    }
+                    for await (id, member) in group {
+                        details[id] = member
+                    }
+                }
+            }
 
             print("id,name,email,role")
             for m in members {
-                print(
-                    "\(m.organizationMemberId ?? ""),\(csvEscape(m.memberName ?? "")),\(m.emailAddress ?? ""),\(m.role ?? "")"
-                )
+                let id = m.organizationMemberId ?? ""
+                let name = m.memberName ?? details[id]?.name ?? ""
+                let email = m.emailAddress ?? details[id]?.email ?? ""
+                print("\(id),\(csvEscape(name)),\(email),\(m.role ?? "")")
+            }
+        }
+    }
+}
+
+// MARK: - Member Commands
+
+struct MemberCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "member",
+        abstract: "조직 멤버 조회",
+        subcommands: [Get.self]
+    )
+
+    struct Get: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "멤버 조회 — ID·이메일과 댓글에 쓸 멘션 링크를 출력한다",
+            discussion: """
+                멘션 링크를 댓글에 넣으면 알림이 가고, 앞에 -> 를 붙이면(->[@이름](…)) 담당자가 그 멤버로 바뀐다.
+                같은 이름이 여러 명이면 모두 출력한다.
+                """
+        )
+
+        @Argument(help: "이름, 이메일, userCode, 또는 멤버 ID")
+        var spec: String
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let members = try await MemberResolver(client: client, post: nil).candidates(for: spec)
+            guard !members.isEmpty else {
+                throw DoorayError.invalidInput("멤버를 찾을 수 없습니다: \(spec)")
+            }
+            let organizationId = try await client.organizationId()
+
+            print("id,name,email,mention")
+            for m in members {
+                let mention = ResolvedMember(id: m.id, name: m.name ?? m.id).mention(organizationId: organizationId)
+                print("\(m.id),\(csvEscape(m.name ?? "")),\(m.email ?? ""),\(csvEscape(mention))")
             }
         }
     }
@@ -89,9 +149,22 @@ struct TaskCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "본문(마크다운)만 출력 — 파일로 저장 후 편집·재업데이트하는 용도 (예: > task.md)")
         var bodyOnly = false
 
+        @Flag(name: .long, help: "API 응답(result)을 JSON 그대로 출력 — 스크립트에서 멤버 ID 등을 꺼내는 용도")
+        var json = false
+
+        func validate() throws {
+            if bodyOnly && json {
+                throw ValidationError("--body-only와 --json은 동시에 사용할 수 없습니다.")
+            }
+        }
+
         func run() async throws {
             let client = try DoorayClient()
             let (projectId, postId) = try await client.resolveTask(identifier)
+            if json {
+                print(try await client.getRawPostJSON(projectId: projectId, postId: postId))
+                return
+            }
             let post = try await client.getPostWithProject(projectId: projectId, postId: postId)
 
             if bodyOnly {
@@ -112,7 +185,8 @@ struct TaskCommand: AsyncParsableCommand {
                 parentPostId: postId
             )
 
-            printPost(post, subPosts: subPosts)
+            let organizationId = try await client.organizationId()
+            printPost(post, subPosts: subPosts, organizationId: organizationId)
         }
     }
 
@@ -185,10 +259,10 @@ struct TaskCommand: AsyncParsableCommand {
         @Argument(help: "태스크 제목")
         var subject: String
 
-        @Option(name: .shortAndLong, help: "태스크 본문 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
+        @Option(name: .shortAndLong, parsing: .unconditional, help: "태스크 본문 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
         var body: String?
 
-        @Option(name: .long, help: "본문으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준)")
+        @Option(name: .long, help: "본문으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준, - 이면 표준 입력)")
         var bodyFile: String?
 
         @Option(name: .shortAndLong, help: "우선순위 (highest/high/normal/low/lowest)")
@@ -197,7 +271,7 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .shortAndLong, help: "마감일 (ISO 8601)")
         var dueDate: String?
 
-        @Option(name: .long, help: "담당자 멤버 ID (쉼표 구분)")
+        @Option(name: .long, help: "담당자 (이름·이메일·userCode·멤버 ID, 쉼표 구분)")
         var to: String?
 
         @Option(name: .long, help: "상위 태스크 (태스크 ID, 프로젝트코드/번호, 또는 URL) — 하위 태스크로 생성")
@@ -225,7 +299,9 @@ struct TaskCommand: AsyncParsableCommand {
                 parentPostId = resolvedParentId
             }
 
-            let usersTo = splitComma(to)
+            let usersTo = try await splitComma(to).asyncMap { specs in
+                try await MemberResolver(client: client, post: nil).resolve(specs).map(\.id)
+            }
             let tagSpecs = tag.flatMap { splitComma($0) ?? [] }
             let tagIds = try await client.resolveTagIds(projectId: projectId, specs: tagSpecs)
             // 서버는 필수 태그가 빠지면 USER_INVALID_TAG_MANDATORY_PREFIX 만 반환하므로
@@ -280,13 +356,13 @@ struct TaskCommand: AsyncParsableCommand {
         @Argument(help: "태스크 ID, 프로젝트코드/번호, 또는 URL")
         var identifier: String
 
-        @Option(name: .shortAndLong, help: "제목")
+        @Option(name: .shortAndLong, parsing: .unconditional, help: "제목")
         var subject: String?
 
-        @Option(name: .shortAndLong, help: "본문 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
+        @Option(name: .shortAndLong, parsing: .unconditional, help: "본문 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
         var body: String?
 
-        @Option(name: .long, help: "본문으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준)")
+        @Option(name: .long, help: "본문으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준, - 이면 표준 입력)")
         var bodyFile: String?
 
         @Option(name: .long, help: "본문 형식 (text/x-markdown 또는 text/html). 미지정 시 기존 본문 형식을 유지")
@@ -298,6 +374,12 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "태그 이름 또는 ID (쉼표 구분, 여러 번 지정 가능). 지정한 목록으로 태그를 교체한다")
         var tag: [String] = []
 
+        @Option(name: .long, help: "담당자 (이름·이메일·userCode·멤버 ID·author, 쉼표 구분, 여러 번 지정 가능). 지정한 목록으로 교체하며 \"\" 이면 비운다")
+        var to: [String] = []
+
+        @Option(name: .long, help: "참조자 (--to 와 같은 형식). 지정한 목록으로 교체하며 \"\" 이면 비운다. 미지정 시 기존 참조자(그룹 포함) 유지")
+        var cc: [String] = []
+
         func validate() throws {
             if body != nil && bodyFile != nil {
                 throw ValidationError("--body와 --body-file은 동시에 사용할 수 없습니다.")
@@ -307,6 +389,34 @@ struct TaskCommand: AsyncParsableCommand {
         func run() async throws {
             let client = try DoorayClient()
             let (projectId, postId) = try await client.resolveTask(identifier)
+
+            // users 는 to·cc 를 통째로 교체하는 필드라 지정하지 않은 쪽은 기존 값을 그대로 채워 보낸다.
+            if !to.isEmpty || !cc.isEmpty {
+                let post = try await client.getPostWithProject(projectId: projectId, postId: postId)
+                let resolver = MemberResolver(client: client, post: post)
+                func users(_ specs: [String], existing: [PostUser]?) async throws -> ([[String: Any]], String) {
+                    guard !specs.isEmpty else {
+                        let current = existing ?? []
+                        return (current.compactMap(\.requestValue), current.map(\.displayName).joined(separator: ", "))
+                    }
+                    let members = try await resolver.resolve(specs.flatMap { splitComma($0) ?? [] })
+                    return (
+                        members.map { ["type": "member", "member": ["organizationMemberId": $0.id]] },
+                        members.map { "\($0.name) (\($0.id))" }.joined(separator: ", ")
+                    )
+                }
+                let (toUsers, toLabel) = try await users(to, existing: post.users?.to)
+                let (ccUsers, ccLabel) = try await users(cc, existing: post.users?.cc)
+                try await client.setPostUsers(projectId: projectId, postId: postId, to: toUsers, cc: ccUsers)
+                print("담당자: \(toLabel.isEmpty ? "(없음)" : toLabel)")
+                print("참조자: \(ccLabel.isEmpty ? "(없음)" : ccLabel)")
+            }
+
+            let hasOtherChanges = subject != nil || body != nil || bodyFile != nil || priority != nil || !tag.isEmpty
+            guard hasOtherChanges || (to.isEmpty && cc.isEmpty) else {
+                print("태스크 수정 완료: \(postId)")
+                return
+            }
 
             let tagSpecs = tag.flatMap { splitComma($0) ?? [] }
             let tagIds = tagSpecs.isEmpty
@@ -451,7 +561,7 @@ struct CommentCommand: AsyncParsableCommand {
         @Argument(help: "댓글 내용 (마크다운, 로컬 이미지 경로는 현재 디렉토리 기준 자동 업로드)")
         var content: String?
 
-        @Option(name: .long, help: "댓글 내용으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준)")
+        @Option(name: .long, help: "댓글 내용으로 사용할 마크다운 파일 (이미지 상대경로는 이 파일 기준, - 이면 표준 입력)")
         var bodyFile: String?
 
         func validate() throws {
@@ -491,17 +601,29 @@ struct CommentCommand: AsyncParsableCommand {
         var logId: String
 
         @Argument(help: "수정할 내용")
-        var content: String
+        var content: String?
+
+        @Option(name: .long, help: "수정할 내용으로 사용할 마크다운 파일 (- 이면 표준 입력)")
+        var bodyFile: String?
+
+        func validate() throws {
+            if (content == nil) == (bodyFile == nil) {
+                throw ValidationError("수정할 내용 또는 --body-file 중 하나를 지정해야 합니다.")
+            }
+        }
 
         func run() async throws {
             let client = try DoorayClient()
             let (projectId, postId) = try await client.resolveTask(identifier)
 
+            guard let (body, _) = try loadMarkdownBody(text: content, file: bodyFile) else {
+                throw ValidationError("수정할 내용 또는 --body-file 중 하나를 지정해야 합니다.")
+            }
             try await client.updateLog(
                 projectId: projectId,
                 postId: postId,
                 logId: logId,
-                content: content
+                content: body
             )
 
             print("댓글 수정 완료: \(logId)")
@@ -690,7 +812,16 @@ struct FileCommand: AsyncParsableCommand {
 
 // MARK: - Output Helpers
 
-func printPost(_ post: Post, subPosts: [Post] = []) {
+func printPost(_ post: Post, subPosts: [Post] = [], organizationId: String? = nil) {
+    // 멤버는 댓글에 바로 붙여 쓸 수 있도록 멘션 링크를 함께 출력한다 (-> 를 앞에 붙이면 담당자 지정).
+    func describe(_ user: PostUser) -> String {
+        guard let organizationId, let member = user.member, let id = member.organizationMemberId else {
+            return user.displayName
+        }
+        let mention = ResolvedMember(id: id, name: member.name ?? id).mention(organizationId: organizationId)
+        return "\(user.displayName) \(mention)"
+    }
+
     print("ID: \(post.id)")
     if let taskNumber = post.taskNumber {
         print("번호: \(taskNumber)")
@@ -701,18 +832,16 @@ func printPost(_ post: Post, subPosts: [Post] = []) {
     print("상태: \(post.workflowClass ?? "") (\(post.workflow?.name ?? ""))")
     print("우선순위: \(post.priority ?? "none")")
 
-    if let from = post.users?.from?.member?.name {
-        print("작성자: \(from)")
+    if let from = post.users?.from {
+        print("작성자: \(describe(from))")
     }
 
     if let to = post.users?.to, !to.isEmpty {
-        let names = to.compactMap { $0.member?.name }.joined(separator: ", ")
-        print("담당자: \(names)")
+        print("담당자: \(to.map(describe).joined(separator: ", "))")
     }
 
     if let cc = post.users?.cc, !cc.isEmpty {
-        let names = cc.compactMap { $0.member?.name }.joined(separator: ", ")
-        print("참조자: \(names)")
+        print("참조자: \(cc.map(describe).joined(separator: ", "))")
     }
 
     if let dueDate = post.dueDate {
