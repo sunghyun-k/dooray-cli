@@ -271,8 +271,11 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .shortAndLong, help: "마감일 (ISO 8601)")
         var dueDate: String?
 
-        @Option(name: .long, help: "담당자 (이름·이메일·userCode·멤버 ID, 쉼표 구분)")
+        @Option(name: .long, help: "담당자 (이름·이메일·userCode·멤버 ID·group:그룹코드, 쉼표 구분)")
         var to: String?
+
+        @Option(name: .long, help: "참조자 (--to 와 같은 형식)")
+        var cc: String?
 
         @Option(name: .long, help: "상위 태스크 (태스크 ID, 프로젝트코드/번호, 또는 URL) — 하위 태스크로 생성")
         var parent: String?
@@ -299,8 +302,12 @@ struct TaskCommand: AsyncParsableCommand {
                 parentPostId = resolvedParentId
             }
 
+            let resolver = MemberResolver(client: client, post: nil, projectId: projectId)
             let usersTo = try await splitComma(to).asyncMap { specs in
-                try await MemberResolver(client: client, post: nil).resolve(specs).map(\.id)
+                try await resolver.resolveUsers(specs).map(\.requestValue)
+            }
+            let usersCc = try await splitComma(cc).asyncMap { specs in
+                try await resolver.resolveUsers(specs).map(\.requestValue)
             }
             let tagSpecs = tag.flatMap { splitComma($0) ?? [] }
             let tagIds = try await client.resolveTagIds(projectId: projectId, specs: tagSpecs)
@@ -321,6 +328,7 @@ struct TaskCommand: AsyncParsableCommand {
                 subject: subject,
                 bodyContent: deferBody ? "" : markdownBody?.content,
                 usersTo: usersTo,
+                usersCc: usersCc,
                 priority: priority,
                 dueDate: dueDate,
                 tagIds: tagIds.isEmpty ? nil : tagIds,
@@ -374,7 +382,7 @@ struct TaskCommand: AsyncParsableCommand {
         @Option(name: .long, help: "태그 이름 또는 ID (쉼표 구분, 여러 번 지정 가능). 지정한 목록으로 태그를 교체한다")
         var tag: [String] = []
 
-        @Option(name: .long, help: "담당자 (이름·이메일·userCode·멤버 ID·author, 쉼표 구분, 여러 번 지정 가능). 지정한 목록으로 교체하며 \"\" 이면 비운다")
+        @Option(name: .long, help: "담당자 (이름·이메일·userCode·멤버 ID·author·group:그룹코드, 쉼표 구분, 여러 번 지정 가능). 지정한 목록으로 교체하며 \"\" 이면 비운다")
         var to: [String] = []
 
         @Option(name: .long, help: "참조자 (--to 와 같은 형식). 지정한 목록으로 교체하며 \"\" 이면 비운다. 미지정 시 기존 참조자(그룹 포함) 유지")
@@ -393,17 +401,14 @@ struct TaskCommand: AsyncParsableCommand {
             // users 는 to·cc 를 통째로 교체하는 필드라 지정하지 않은 쪽은 기존 값을 그대로 채워 보낸다.
             if !to.isEmpty || !cc.isEmpty {
                 let post = try await client.getPostWithProject(projectId: projectId, postId: postId)
-                let resolver = MemberResolver(client: client, post: post)
+                let resolver = MemberResolver(client: client, post: post, projectId: projectId)
                 func users(_ specs: [String], existing: [PostUser]?) async throws -> ([[String: Any]], String) {
                     guard !specs.isEmpty else {
                         let current = existing ?? []
                         return (current.compactMap(\.requestValue), current.map(\.displayName).joined(separator: ", "))
                     }
-                    let members = try await resolver.resolve(specs.flatMap { splitComma($0) ?? [] })
-                    return (
-                        members.map { ["type": "member", "member": ["organizationMemberId": $0.id]] },
-                        members.map { "\($0.name) (\($0.id))" }.joined(separator: ", ")
-                    )
+                    let users = try await resolver.resolveUsers(specs.flatMap { splitComma($0) ?? [] })
+                    return (users.map(\.requestValue), users.map(\.label).joined(separator: ", "))
                 }
                 let (toUsers, toLabel) = try await users(to, existing: post.users?.to)
                 let (ccUsers, ccLabel) = try await users(cc, existing: post.users?.cc)

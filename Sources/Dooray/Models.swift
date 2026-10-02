@@ -56,10 +56,18 @@ struct Member: Decodable, Sendable {
     let role: String?
 }
 
+/// 프로젝트 멤버 그룹. 업무 담당자·참조자로 지정할 수 있다. 이름은 `code` 에 들어 있다.
 struct MemberGroup: Decodable, Sendable {
     let id: String
-    let name: String?
-    let members: [Member]?
+    let code: String?
+    let project: PostProject?
+
+    /// 업무 조회 응답(`PostGroup.code`)과 같은 `프로젝트코드/그룹코드` 형식
+    var fullCode: String? {
+        guard let code else { return nil }
+        guard let projectCode = project?.code else { return code }
+        return "\(projectCode)/\(code)"
+    }
 }
 
 // MARK: - Post (Task)
@@ -272,10 +280,6 @@ struct Log: Decodable, Sendable {
 }
 
 // MARK: - List Results
-
-struct MemberGroupListResult: Decodable, Sendable {
-    let contents: [MemberGroup]?
-}
 
 struct CreateResult: Decodable, Sendable {
     let id: String?

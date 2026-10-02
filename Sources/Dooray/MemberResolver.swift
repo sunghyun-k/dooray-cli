@@ -10,27 +10,117 @@ struct ResolvedMember: Sendable {
     }
 }
 
-/// `--to`·`--cc` 로 받은 멤버 지정자를 조직 멤버로 해석한다.
+/// 업무 담당자·참조자로 지정할 대상. 멤버 또는 프로젝트 멤버 그룹.
+enum ResolvedUser: Sendable {
+    case member(ResolvedMember)
+    case group(id: String, code: String)
+
+    /// 업무 생성·수정 요청의 users.to/cc 원소
+    var requestValue: [String: Any] {
+        switch self {
+        case let .member(member):
+            ["type": "member", "member": ["organizationMemberId": member.id]]
+        case let .group(id, _):
+            ["type": "group", "group": ["projectMemberGroupId": id]]
+        }
+    }
+
+    /// `task get` 의 담당자·참조자 표기와 같은 형식
+    var label: String {
+        switch self {
+        case let .member(member): "\(member.name) (\(member.id))"
+        case let .group(_, code): "\(code) [그룹]"
+        }
+    }
+
+    private var key: String {
+        switch self {
+        case let .member(member): "member:\(member.id)"
+        case let .group(id, _): "group:\(id)"
+        }
+    }
+
+    static func unique(_ users: [ResolvedUser]) -> [ResolvedUser] {
+        var seen = Set<String>()
+        return users.filter { seen.insert($0.key).inserted }
+    }
+}
+
+/// `--to`·`--cc` 로 받은 지정자를 조직 멤버 또는 프로젝트 멤버 그룹으로 해석한다.
 ///
-/// 지정자: `author`(업무 등록자), 멤버 ID(19자리), 이메일, userCode, 이름.
+/// 멤버 지정자: `author`(업무 등록자), 멤버 ID(19자리), 이메일, userCode, 이름.
 /// 이름은 먼저 업무에 이미 등장한 사람(등록자·담당자·참조자·참조 그룹 구성원) 중에서 찾고,
 /// 없으면 조직 전체에서 찾는다. 조직에서 동명이인이면 후보를 알려 주고 멈춘다.
+///
+/// 그룹 지정자: `group:<code>` 또는 `task get` 표기 그대로인 `<code> [그룹]`. code 대신 그룹 ID 도 받는다.
+/// 그룹은 프로젝트에 속하므로 `projectId` 의 그룹에서만 찾는다.
 struct MemberResolver {
     let client: DoorayClient
     /// 이름 해석 우선순위와 `author` 해석에 쓰는 업무. 업무 생성처럼 업무가 없으면 nil.
     let post: Post?
+    /// 그룹 지정자를 찾을 프로젝트. nil 이면 그룹 지정자를 받지 않는다.
+    var projectId: String?
 
     static let authorKeywords: Set<String> = ["author", "작성자", "등록자"]
 
-    func resolve(_ specs: [String]) async throws -> [ResolvedMember] {
-        var result: [ResolvedMember] = []
+    /// 멤버·그룹 지정자를 함께 해석한다. 업무 담당자·참조자 지정용.
+    func resolveUsers(_ specs: [String]) async throws -> [ResolvedUser] {
+        var groups: [MemberGroup]?
+        var result: [ResolvedUser] = []
         for spec in specs {
-            let member = try await resolve(spec)
-            if !result.contains(where: { $0.id == member.id }) {
-                result.append(member)
+            if let groupSpec = Self.groupSpec(spec) {
+                guard let projectId else {
+                    throw DoorayError.invalidInput("'\(spec)': 그룹을 찾을 프로젝트를 알 수 없습니다.")
+                }
+                if groups == nil {
+                    groups = try await client.getProjectMemberGroups(projectId: projectId)
+                }
+                result.append(try group(groupSpec, in: groups ?? [], spec: spec))
+            } else {
+                result.append(.member(try await resolve(spec)))
             }
         }
-        return result
+        return ResolvedUser.unique(result)
+    }
+
+    /// `group:<code>`·`<code> [그룹]` 이면 code(또는 ID)를, 아니면 nil 을 반환한다.
+    static func groupSpec(_ rawSpec: String) -> String? {
+        let spec = rawSpec.trimmingCharacters(in: .whitespaces)
+        if spec.lowercased().hasPrefix("group:") {
+            return spec.dropFirst("group:".count).trimmingCharacters(in: .whitespaces)
+        }
+        if spec.hasSuffix("[그룹]") {
+            return spec.dropLast("[그룹]".count).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    /// 그룹을 ID, `프로젝트코드/그룹코드`, 그룹코드 순으로 찾는다.
+    /// 다른 프로젝트의 그룹은 API 로 목록을 볼 수 없으므로 업무에 이미 지정된 그룹에서만 찾는다.
+    private func group(_ groupSpec: String, in groups: [MemberGroup], spec: String) throws -> ResolvedUser {
+        let lowered = groupSpec.lowercased()
+        if let existing = postGroups.first(where: {
+            $0.projectMemberGroupId == groupSpec || $0.code?.lowercased() == lowered
+        }), let id = existing.projectMemberGroupId {
+            return .group(id: id, code: existing.code ?? id)
+        }
+        let found = groups.first { $0.id == groupSpec }
+            ?? groups.first { $0.fullCode?.lowercased() == lowered }
+            ?? groups.first { $0.code?.lowercased() == lowered }
+        guard let found else {
+            let available = groups.compactMap(\.code).joined(separator: ", ")
+            throw DoorayError.invalidInput("""
+                그룹을 찾을 수 없습니다: \(spec)
+                프로젝트 그룹: \(available.isEmpty ? "(없음)" : available)
+                """)
+        }
+        return .group(id: found.id, code: found.fullCode ?? found.id)
+    }
+
+    /// 업무의 담당자·참조자로 지정된 그룹
+    private var postGroups: [PostGroup] {
+        guard let users = post?.users else { return [] }
+        return ((users.to ?? []) + (users.cc ?? [])).compactMap(\.group)
     }
 
     func resolve(_ rawSpec: String) async throws -> ResolvedMember {

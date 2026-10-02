@@ -44,7 +44,7 @@ dooray-cli task get <식별자> --json
 dooray-cli task list <프로젝트코드> [--workflow backlog,registered,working,closed] [--order -postUpdatedAt] [--to-member-ids 멤버ID,...] [--created-by me|멤버ID,...] [--created-at today|thisweek|prev-Nd|next-Nd|ISO8601~ISO8601] [--page 0]
 
 # 태스크 생성 (--parent 지정 시 하위 태스크로 생성)
-dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 이름|이메일|멤버ID] [--parent 상위태스크식별자] [--tag "Platform: iOS" --tag "업무: Document"]
+dooray-cli task create <프로젝트코드> "제목" [--body "본문"] [--body-file 본문.md] [--priority normal] [--due-date 2024-12-31] [--to 이름|이메일|멤버ID|group:그룹코드] [--cc 참조자,...] [--parent 상위태스크식별자] [--tag "Platform: iOS" --tag "업무: Document"]
 
 # 태스크 수정 (--body-mime 미지정 시 기존 본문 형식을 그대로 유지, --tag 는 태그 목록을 교체)
 dooray-cli task update <식별자> [--subject "새제목"] [--body "새본문"] [--body-file 본문.md] [--body-mime text/html] [--priority high] [--tag iOS,Document] [--to 담당자,...] [--cc 참조자,...]
@@ -100,10 +100,11 @@ dooray-cli task get my-project/123 | grep '^작성자'   # 작성자: 홍길동 
 dooray-cli comment create my-project/123 '->[@홍길동](dooray://…) 수정되었습니다. 확인 부탁드립니다.'
 ```
 
-`task update --to/--cc`(및 `task create --to`)는 멤버를 이름·이메일·userCode·멤버 ID 로 받고, `author` 는 업무 등록자다. 지정한 쪽 목록을 교체하고 지정하지 않은 쪽은 기존 값(그룹 포함)을 유지하며, `""` 을 주면 비운다. 두레이 API 는 users 를 통째로 교체하므로 CLI 가 반대쪽을 채워 보낸다. 이름은 업무에 등장한 사람을 먼저 찾고 없으면 조직 전체에서 찾으며, 동명이인이면 후보를 보여 주고 멈춘다.
+`task create/update` 의 `--to/--cc` 는 멤버를 이름·이메일·userCode·멤버 ID 로 받고, `author` 는 업무 등록자다. 프로젝트 멤버 그룹은 `group:그룹코드`(예: `group:ios`) 또는 `task get` 표기 그대로(`프로젝트코드/ios [그룹]`)로 지정한다. 그룹은 업무의 프로젝트에서 찾고, 다른 프로젝트 그룹은 업무에 이미 지정된 것만 다시 지정할 수 있다. 지정한 쪽 목록을 교체하고 지정하지 않은 쪽은 기존 값(그룹 포함)을 유지하며, `""` 을 주면 비운다. 두레이 API 는 users 를 통째로 교체하므로 CLI 가 반대쪽을 채워 보낸다. 이름은 업무에 등장한 사람을 먼저 찾고 없으면 조직 전체에서 찾으며, 동명이인이면 후보를 보여 주고 멈춘다.
 
 ```bash
 dooray-cli task update my-project/123 --to 홍길동,김철수
+dooray-cli task update my-project/123 --cc group:ios   # 참조자를 ios 그룹으로
 ```
 
 ### `-` 로 시작하는 내용

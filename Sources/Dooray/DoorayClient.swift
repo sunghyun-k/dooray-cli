@@ -230,10 +230,12 @@ final class DoorayClient: Sendable {
     }
 
     func getProjectMemberGroups(projectId: String) async throws -> [MemberGroup] {
-        let response: DoorayResponse<MemberGroupListResult> = try await get(
-            path: "/project/v1/projects/\(projectId)/member-groups"
+        // 응답 result 가 그룹 배열을 한 번 더 감싼 배열(`[[{id, code, …}]]`)로 온다.
+        let response: DoorayResponse<[[MemberGroup]]> = try await get(
+            path: "/project/v1/projects/\(projectId)/member-groups",
+            parameters: ["page": "0", "size": "100"]
         )
-        return response.result?.contents ?? []
+        return response.result?.flatMap { $0 } ?? []
     }
 
     // MARK: - Posts (Tasks)
@@ -323,7 +325,8 @@ final class DoorayClient: Sendable {
         subject: String,
         bodyContent: String? = nil,
         bodyMimeType: String = "text/x-markdown",
-        usersTo: [String]? = nil,
+        usersTo: [[String: Any]]? = nil,
+        usersCc: [[String: Any]]? = nil,
         priority: String? = nil,
         dueDate: String? = nil,
         milestoneId: String? = nil,
@@ -336,12 +339,8 @@ final class DoorayClient: Sendable {
             dict["body"] = ["content": bodyContent, "mimeType": bodyMimeType]
         }
 
-        if let usersTo {
-            dict["users"] = [
-                "to": usersTo.map { id in
-                    ["type": "member", "member": ["organizationMemberId": id]]
-                },
-            ]
+        if usersTo != nil || usersCc != nil {
+            dict["users"] = ["to": usersTo ?? [], "cc": usersCc ?? []]
         }
 
         if let priority { dict["priority"] = priority }
