@@ -1,12 +1,12 @@
 ---
 name: dooray
-description: Manage Dooray project tasks, comments, workflows, tags, and files
+description: Manage Dooray project tasks, comments, workflows, tags, and files, and read wiki pages
 allowed-tools: Bash(dooray-cli:*)
 ---
 
 # Dooray CLI Skill
 
-두레이 프로젝트 관리 CLI 도구. 태스크, 댓글, 워크플로우, 태그 등을 조회하고 관리합니다.
+두레이 프로젝트 관리 CLI 도구. 태스크, 댓글, 워크플로우, 태그 등을 조회하고 관리하며, 위키 페이지를 조회합니다.
 
 ## 사전 조건
 
@@ -86,6 +86,28 @@ dooray-cli file download <식별자> [--output 저장경로] [파일ID]
 
 # 첨부파일 업로드 (--inline: 본문/댓글 인라인 이미지용, 첨부 목록에 표시 안 됨)
 dooray-cli file upload <식별자> <파일경로> [파일경로...] [--inline]
+```
+
+### 위키
+```bash
+# 위키 목록 (id,name,scope,home_page_id)
+dooray-cli wiki list [--page 0]
+
+# 위키 페이지 목록 — 한 단계만 (id,subject,parent_id)
+# 위키만 주면 최상위 페이지. 하위 페이지는 출력된 id 를 --parent 로 넘겨 내려간다
+dooray-cli wiki pages <위키이름|위키ID>
+dooray-cli wiki pages --parent <페이지ID|URL>   # 위키는 상위 페이지에서 알아낸다
+
+# 위키 페이지 조회 (페이지 ID 또는 위키 페이지 URL)
+dooray-cli wiki get <페이지>
+dooray-cli wiki get <페이지> --body-only   # 본문 마크다운만
+dooray-cli wiki get <페이지> --json        # API 응답 원본
+
+# 위키 페이지 댓글 (id,creator,content,created_at, 최신순)
+dooray-cli wiki comments <페이지> [--page 0]
+
+# 첨부파일·인라인 이미지 다운로드 (파일ID 생략 시 전체)
+dooray-cli wiki download <페이지> [파일ID] [--output 저장경로]
 ```
 
 ### 태그

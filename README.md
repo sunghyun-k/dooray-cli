@@ -69,6 +69,22 @@ dooray-cli tag list <프로젝트코드> [--page 0]
 dooray-cli file list <식별자>
 dooray-cli file download <식별자> [--output 저장경로] [파일ID]
 dooray-cli file upload <식별자> <파일경로> [파일경로...] [--inline]
+
+# 위키 목록 (id,name,scope,home_page_id)
+dooray-cli wiki list [--page 0]
+
+# 위키 페이지 목록 — 한 단계만 (id,subject,parent_id). 위키만 주면 최상위, 하위는 id 를 --parent 로 넘긴다
+dooray-cli wiki pages <위키이름|위키ID>
+dooray-cli wiki pages --parent <페이지ID|URL>   # 위키는 상위 페이지에서 알아낸다
+
+# 위키 페이지 조회 (페이지 ID 또는 URL)
+dooray-cli wiki get <페이지> [--body-only] [--json]
+
+# 위키 페이지 댓글 (최신순, 한 페이지 100개)
+dooray-cli wiki comments <페이지> [--page 0]
+
+# 위키 첨부파일·인라인 이미지 다운로드 (파일ID 생략 시 전체)
+dooray-cli wiki download <페이지> [파일ID] [--output 저장경로]
 ```
 
 ### 태그

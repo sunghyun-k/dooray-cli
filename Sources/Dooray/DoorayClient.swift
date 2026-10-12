@@ -290,6 +290,11 @@ final class DoorayClient: Sendable {
         let path = "/project/v1/projects/\(projectId)/posts/\(postId)"
         // 응답 검증·오류 메시지는 기존 경로를 그대로 쓰고, 성공하면 원본을 다시 받아 result 만 꺼낸다.
         _ = try await getPostWithProject(projectId: projectId, postId: postId)
+        return try await rawResultJSON(path: path)
+    }
+
+    /// 성공이 확인된 경로를 다시 받아 result 만 정렬된 JSON 문자열로 꺼낸다 (`--json` 출력용).
+    private func rawResultJSON(path: String) async throws -> String {
         let dataResponse = await session.request("\(baseURL)\(path)", headers: headers).serializingData().response
         guard let data = dataResponse.value,
               let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -562,7 +567,11 @@ final class DoorayClient: Sendable {
     }
 
     func downloadFile(projectId: String, postId: String, fileId: String, to destination: URL) async throws {
-        let url = "\(baseURL)/project/v1/projects/\(projectId)/posts/\(postId)/files/\(fileId)?media=raw"
+        try await download(path: "/project/v1/projects/\(projectId)/posts/\(postId)/files/\(fileId)?media=raw", to: destination)
+    }
+
+    private func download(path: String, to destination: URL) async throws {
+        let url = "\(baseURL)\(path)"
 
         // 307 리다이렉트 시 Authorization 헤더를 유지하도록 설정
         let authHeaders = headers
@@ -644,6 +653,61 @@ final class DoorayClient: Sendable {
             throw DoorayError.apiError(statusCode: 0, message: "파일 업로드 실패: \(response.header.resultMessage ?? "")")
         }
         return id
+    }
+
+    // MARK: - Wiki
+
+    func listWikis(page: Int = 0, size: Int = 20) async throws -> [Wiki] {
+        try await getList(path: "/wiki/v1/wikis", parameters: ["page": "\(page)", "size": "\(size)"])
+    }
+
+    /// 위키 ID 또는 이름(대소문자 무시)을 위키 ID 로 바꾼다. 이름은 접근 가능한 위키 목록에서 찾는다.
+    func resolveWikiId(_ nameOrId: String) async throws -> String {
+        if nameOrId.wholeMatch(of: doorayIdPattern) != nil {
+            return nameOrId
+        }
+        for page in 0..<50 {
+            let wikis = try await listWikis(page: page, size: 100)
+            if let found = wikis.first(where: { $0.name?.lowercased() == nameOrId.lowercased() }) {
+                return found.id
+            }
+            if wikis.count < 100 { break }
+        }
+        throw DoorayError.invalidInput("위키를 찾을 수 없습니다: \(nameOrId) — `wiki list` 로 이름이나 ID 를 확인하세요.")
+    }
+
+    /// parentPageId 가 nil 이면 최상위 페이지들을 돌려준다.
+    func listWikiPages(wikiId: String, parentPageId: String?) async throws -> [WikiPage] {
+        var params: [String: String] = [:]
+        if let parentPageId { params["parentPageId"] = parentPageId }
+        return try await getList(path: "/wiki/v1/wikis/\(wikiId)/pages", parameters: params)
+    }
+
+    /// 위키 ID 없이 페이지 ID 만으로 조회한다.
+    func getWikiPage(pageId: String) async throws -> WikiPage {
+        let response: DoorayResponse<WikiPage> = try await get(path: "/wiki/v1/pages/\(pageId)")
+        guard let page = response.result else {
+            throw DoorayError.invalidInput("위키 페이지를 찾을 수 없습니다: \(pageId)")
+        }
+        return page
+    }
+
+    func getRawWikiPageJSON(pageId: String) async throws -> String {
+        _ = try await getWikiPage(pageId: pageId)
+        return try await rawResultJSON(path: "/wiki/v1/pages/\(pageId)")
+    }
+
+    /// 최신 댓글이 0 페이지의 첫 번째로 온다.
+    func listWikiComments(wikiId: String, pageId: String, page: Int = 0, size: Int = 100) async throws -> [WikiComment] {
+        try await getList(
+            path: "/wiki/v1/wikis/\(wikiId)/pages/\(pageId)/comments",
+            parameters: ["page": "\(page)", "size": "\(size)"]
+        )
+    }
+
+    /// fileId 는 페이지 조회 응답의 files[].id 또는 images[].id
+    func downloadWikiFile(wikiId: String, pageId: String, fileId: String, to destination: URL) async throws {
+        try await download(path: "/wiki/v1/wikis/\(wikiId)/pages/\(pageId)/files/\(fileId)?media=raw", to: destination)
     }
 
     // MARK: - Task Identifier Resolution

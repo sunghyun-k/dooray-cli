@@ -312,3 +312,76 @@ struct FileInfo: Decodable, Sendable {
     let mimeType: String?
     let createdAt: String?
 }
+
+// MARK: - Wiki
+
+struct Wiki: Decodable, Sendable {
+    let id: String
+    let name: String?
+    let type: String?
+    let scope: String?
+    let project: PostProject?
+    let home: WikiHome?
+}
+
+struct WikiHome: Decodable, Sendable {
+    let pageId: String?
+}
+
+struct WikiPage: Decodable, Sendable {
+    let id: String
+    let wikiId: String?
+    let version: String?
+    let parentPageId: String?
+    let subject: String?
+    let body: PostBody?
+    let root: Bool?
+    let createdAt: String?
+    let updatedAt: String?
+    let creator: PostUser?
+    let referrers: [PostUser]?
+    let files: [WikiFile]?
+    let images: [WikiFile]?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, wikiId, version, parentPageId, subject, body, root, createdAt, updatedAt
+        case creator, referrers, files, images
+    }
+
+    // version 은 문서상 문자열이지만 생성 응답처럼 숫자로 오는 경우도 있어 둘 다 받는다.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        wikiId = try container.decodeIfPresent(String.self, forKey: .wikiId)
+        if let number = try? container.decodeIfPresent(Int.self, forKey: .version) {
+            version = String(number)
+        } else {
+            version = try container.decodeIfPresent(String.self, forKey: .version)
+        }
+        parentPageId = try container.decodeIfPresent(String.self, forKey: .parentPageId)
+        subject = try container.decodeIfPresent(String.self, forKey: .subject)
+        body = try container.decodeIfPresent(PostBody.self, forKey: .body)
+        root = try container.decodeIfPresent(Bool.self, forKey: .root)
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        creator = try container.decodeIfPresent(PostUser.self, forKey: .creator)
+        referrers = try container.decodeIfPresent([PostUser].self, forKey: .referrers)
+        files = try container.decodeIfPresent([WikiFile].self, forKey: .files)
+        images = try container.decodeIfPresent([WikiFile].self, forKey: .images)
+    }
+}
+
+struct WikiFile: Decodable, Sendable {
+    let id: String
+    let name: String?
+    let size: Int?
+    let attachFileId: String?
+}
+
+struct WikiComment: Decodable, Sendable {
+    let id: String
+    let body: PostBody?
+    let creator: PostUser?
+    let createdAt: String?
+    let modifiedAt: String?
+}

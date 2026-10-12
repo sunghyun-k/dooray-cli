@@ -225,3 +225,16 @@ func escapeDashLeadingPositionals(_ arguments: [String]) -> [String] {
     }
     return kept + ["--"] + moved
 }
+
+/// 위키 페이지 ID 또는 위키 페이지 URL 에서 페이지 ID 를 꺼낸다.
+/// URL 은 경로의 마지막 19자리 숫자를 페이지 ID 로 본다 (예: https://…/wiki/{위키ID}/{페이지ID}).
+func parseWikiPageId(_ input: String) throws -> String {
+    if input.wholeMatch(of: doorayIdPattern) != nil {
+        return input
+    }
+    if let url = URL(string: input),
+       let pageId = url.pathComponents.last(where: { $0.wholeMatch(of: doorayIdPattern) != nil }) {
+        return pageId
+    }
+    throw DoorayError.invalidIdentifier(input)
+}

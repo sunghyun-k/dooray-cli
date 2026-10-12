@@ -14,6 +14,7 @@ struct DoorayCLI: AsyncParsableCommand {
             WorkflowCommand.self,
             TagCommand.self,
             FileCommand.self,
+            WikiCommand.self,
         ]
     )
 
@@ -809,6 +810,240 @@ struct FileCommand: AsyncParsableCommand {
                 let destination = outputDir.appendingPathComponent(fileName)
                 print("다운로드 중: \(fileName)...")
                 try await client.downloadFile(projectId: projectId, postId: postId, fileId: file.id, to: destination)
+                print("완료: \(destination.path)")
+            }
+        }
+    }
+}
+
+// MARK: - Wiki Commands
+
+struct WikiCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "wiki",
+        abstract: "위키 조회",
+        subcommands: [List.self, Pages.self, Get.self, Comments.self, Download.self]
+    )
+
+    struct List: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "접근 가능한 위키 목록 조회")
+
+        @Option(name: .shortAndLong, help: "페이지 번호")
+        var page: Int = 0
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let wikis = try await client.listWikis(page: page, size: 100)
+
+            print("id,name,scope,home_page_id")
+            for w in wikis {
+                print("\(w.id),\(csvEscape(w.name ?? "")),\(w.scope ?? ""),\(w.home?.pageId ?? "")")
+            }
+        }
+    }
+
+    struct Pages: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "위키 페이지 목록 조회 — 한 단계(형제 페이지)만 나온다",
+            discussion: """
+                위키만 지정하면 최상위 페이지를 보여준다. 하위 페이지는 출력된 id 를 --parent 로 넘겨 조회한다.
+                --parent 를 주면 위키는 그 페이지에서 알아내므로 생략할 수 있다.
+                """
+        )
+
+        @Argument(help: "위키 이름 또는 ID (--parent 를 주면 생략 가능)")
+        var wiki: String?
+
+        @Option(name: .long, help: "상위 페이지 ID 또는 URL")
+        var parent: String?
+
+        func validate() throws {
+            if wiki == nil && parent == nil {
+                throw ValidationError("위키 이름·ID 또는 --parent 중 하나는 지정해야 합니다.")
+            }
+        }
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let parentPageId = try parent.map(parseWikiPageId)
+            let wikiId: String
+            if let wiki {
+                wikiId = try await client.resolveWikiId(wiki)
+            } else if let parentPageId {
+                guard let id = try await client.getWikiPage(pageId: parentPageId).wikiId else {
+                    throw DoorayError.invalidInput("페이지의 위키 ID 를 알 수 없습니다: \(parentPageId)")
+                }
+                wikiId = id
+            } else {
+                throw ValidationError("위키 이름·ID 또는 --parent 중 하나는 지정해야 합니다.")
+            }
+            let pages = try await client.listWikiPages(wikiId: wikiId, parentPageId: parentPageId)
+
+            print("id,subject,parent_id")
+            for p in pages {
+                print("\(p.id),\(csvEscape(p.subject ?? "")),\(p.parentPageId ?? "")")
+            }
+        }
+    }
+
+    struct Get: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "위키 페이지 상세 조회")
+
+        @Argument(help: "위키 페이지 ID 또는 URL")
+        var page: String
+
+        @Flag(name: .long, help: "본문(마크다운)만 출력")
+        var bodyOnly = false
+
+        @Flag(name: .long, help: "API 응답(result)을 JSON 그대로 출력")
+        var json = false
+
+        func validate() throws {
+            if bodyOnly && json {
+                throw ValidationError("--body-only와 --json은 동시에 사용할 수 없습니다.")
+            }
+        }
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let pageId = try parseWikiPageId(page)
+            if json {
+                print(try await client.getRawWikiPageJSON(pageId: pageId))
+                return
+            }
+            let wikiPage = try await client.getWikiPage(pageId: pageId)
+
+            if bodyOnly {
+                print(wikiPage.body?.content ?? "")
+                return
+            }
+
+            // 페이지 조회 응답의 작성자·참조자에는 이름이 없어 멤버 조회로 채운다.
+            let users = [wikiPage.creator].compactMap { $0 } + (wikiPage.referrers ?? [])
+            var names: [String: String] = [:]
+            for id in Set(users.compactMap { $0.member?.organizationMemberId }) where !id.isEmpty {
+                names[id] = try? await client.getMember(id: id).name
+            }
+            func describe(_ user: PostUser) -> String {
+                guard let id = user.member?.organizationMemberId, !id.isEmpty else { return user.displayName }
+                return "\(names[id] ?? user.member?.name ?? "") (\(id))"
+            }
+
+            print("ID: \(wikiPage.id)")
+            print("위키 ID: \(wikiPage.wikiId ?? "")")
+            print("제목: \(wikiPage.subject ?? "")")
+            if let parentPageId = wikiPage.parentPageId {
+                print("상위 페이지: \(parentPageId)")
+            }
+            if let version = wikiPage.version {
+                print("버전: \(version)")
+            }
+            if let creator = wikiPage.creator {
+                print("작성자: \(describe(creator))")
+            }
+            let referrers = (wikiPage.referrers ?? []).filter { !($0.member?.organizationMemberId ?? "").isEmpty }
+            if !referrers.isEmpty {
+                print("참조자: \(referrers.map(describe).joined(separator: ", "))")
+            }
+            print("생성일: \(wikiPage.createdAt ?? "")")
+            print("수정일: \(wikiPage.updatedAt ?? "")")
+
+            let files = wikiPage.files ?? []
+            if !files.isEmpty {
+                print("첨부파일:")
+                for f in files {
+                    print("  \(f.id) \(f.name ?? "") (\(f.size.map { "\($0) bytes" } ?? "?"))")
+                }
+            }
+            if let images = wikiPage.images, !images.isEmpty {
+                print("인라인 이미지: \(images.count)개 (`wiki download` 로 받을 수 있음)")
+            }
+
+            if let body = wikiPage.body?.content, !body.isEmpty {
+                print("\n--- 본문 ---")
+                print(body)
+            }
+        }
+    }
+
+    struct Comments: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "위키 페이지 댓글 목록 조회 (최신순)")
+
+        @Argument(help: "위키 페이지 ID 또는 URL")
+        var identifier: String
+
+        @Option(name: .shortAndLong, help: "페이지 번호 (한 페이지 100개)")
+        var page: Int = 0
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let pageId = try parseWikiPageId(identifier)
+            let wikiPage = try await client.getWikiPage(pageId: pageId)
+            guard let wikiId = wikiPage.wikiId else {
+                throw DoorayError.invalidInput("페이지의 위키 ID 를 알 수 없습니다: \(pageId)")
+            }
+            let comments = try await client.listWikiComments(wikiId: wikiId, pageId: pageId, page: page)
+
+            print("id,creator,content,created_at")
+            for c in comments {
+                let creator = c.creator?.member?.name ?? ""
+                print("\(c.id),\(csvEscape(creator)),\(csvEscape(c.body?.content ?? "")),\(c.createdAt ?? "")")
+            }
+        }
+    }
+
+    struct Download: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "위키 페이지 첨부파일·인라인 이미지 다운로드")
+
+        @Argument(help: "위키 페이지 ID 또는 URL")
+        var page: String
+
+        @Argument(help: "다운로드할 파일 ID (생략 시 첨부파일과 인라인 이미지 전체)")
+        var fileId: String?
+
+        @Option(name: .shortAndLong, help: "저장 디렉토리 (기본: 임시 디렉토리)")
+        var output: String?
+
+        func run() async throws {
+            let client = try DoorayClient()
+            let pageId = try parseWikiPageId(page)
+            let wikiPage = try await client.getWikiPage(pageId: pageId)
+            guard let wikiId = wikiPage.wikiId else {
+                throw DoorayError.invalidInput("페이지의 위키 ID 를 알 수 없습니다: \(pageId)")
+            }
+
+            let files = (wikiPage.files ?? []) + (wikiPage.images ?? [])
+            guard !files.isEmpty else {
+                print("첨부파일이 없습니다.")
+                return
+            }
+
+            let targetFiles: [WikiFile]
+            if let fileId {
+                guard let file = files.first(where: { $0.id == fileId }) else {
+                    throw DoorayError.apiError(statusCode: 0, message: "파일 ID '\(fileId)'를 찾을 수 없습니다.")
+                }
+                targetFiles = [file]
+            } else {
+                targetFiles = files
+            }
+
+            let outputDir: URL
+            if let output {
+                outputDir = URL(fileURLWithPath: output)
+            } else {
+                let tmpDir = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("dooray-wiki-files")
+                    .appendingPathComponent(pageId)
+                try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+                outputDir = tmpDir
+            }
+
+            for file in targetFiles {
+                let fileName = file.name ?? file.id
+                let destination = outputDir.appendingPathComponent(fileName)
+                print("다운로드 중: \(fileName)...")
+                try await client.downloadWikiFile(wikiId: wikiId, pageId: pageId, fileId: file.id, to: destination)
                 print("완료: \(destination.path)")
             }
         }
