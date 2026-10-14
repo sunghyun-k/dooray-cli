@@ -932,6 +932,9 @@ struct WikiCommand: AsyncParsableCommand {
             print("ID: \(wikiPage.id)")
             print("위키 ID: \(wikiPage.wikiId ?? "")")
             print("제목: \(wikiPage.subject ?? "")")
+            if let organizationId = try? await client.organizationId() {
+                print("참조: \(wikiPageReference(id: wikiPage.id, subject: wikiPage.subject ?? "", organizationId: organizationId))")
+            }
             if let parentPageId = wikiPage.parentPageId {
                 print("상위 페이지: \(parentPageId)")
             }

@@ -99,6 +99,7 @@ dooray-cli wiki pages <위키이름|위키ID>
 dooray-cli wiki pages --parent <페이지ID|URL>   # 위키는 상위 페이지에서 알아낸다
 
 # 위키 페이지 조회 (페이지 ID 또는 위키 페이지 URL)
+# `참조:` 줄 = 업무 본문·댓글에 넣는 페이지 참조 링크 (아래 "위키 페이지 참조")
 dooray-cli wiki get <페이지>
 dooray-cli wiki get <페이지> --body-only   # 본문 마크다운만
 dooray-cli wiki get <페이지> --json        # API 응답 원본
@@ -145,7 +146,20 @@ dooray-cli task update my-project/123 --cc group:ios   # 참조자를 ios 그룹
 - 텍스트 입력(`--body`, 댓글 내용): 상대경로는 현재 디렉토리 기준
 - `--body-file`: 상대경로는 마크다운 파일 위치 기준
 - URL, 기존 `/files/` 참조, 존재하지 않는 경로는 그대로 유지
+- 같은 파일을 여러 번 참조하면 한 번만 업로드
 - 파일 업로드 API가 태스크 종속이라, `task create` 는 로컬 이미지가 있으면 본문을 비워 태스크를 먼저 만들고 업로드 후 본문을 채운다. 업로드 실패 시에도 깨진 로컬 경로가 본문에 남지 않는다
+- 크기 지정: `<img src="로컬경로" width="390" />` 도 업로드되고 `src` 만 `/files/{fileId}` 로 바뀐다(`width` 등 속성 유지). 레티나(2배) 캡처는 `width` = 픽셀 너비(`sips -g pixelWidth`)의 절반이면 1배 크기로 보인다. 이미 올린 이미지는 `<img src="/files/{fileId}" width="…" />` 로 바꿔 `task update`
+
+### 위키 페이지 참조
+
+업무 본문·댓글에서 위키 페이지는 `https://….dooray.com/wiki/…` URL 이 아니라 두레이 내부 참조로 건다. `wiki get` 의 `참조:` 줄을 그대로 붙여 넣으면 된다.
+
+```markdown
+[4. 홈](dooray://{조직ID}/pages/{페이지ID} "publish")
+```
+
+- 링크 텍스트의 `[` `]` 는 `&#91;` `&#93;` 로 이스케이프한다(`참조:` 줄은 이미 처리돼 있다).
+- 본문 중간에서 언급할 때도 같은 형식을 쓰고, 같은 페이지를 https 링크로 중복해 걸지 않는다.
 
 ```bash
 dooray-cli comment create my-project/123 "결과 스크린샷: ![결과](./screenshot.png)"

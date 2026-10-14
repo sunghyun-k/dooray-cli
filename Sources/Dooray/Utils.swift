@@ -115,60 +115,66 @@ func loadMarkdownBody(text: String?, file: String?) throws -> (content: String, 
     return nil
 }
 
+/// 본문의 이미지 참조에서 경로 부분의 위치를 문서 순서대로 찾는다.
+/// 마크다운 `![이름](경로)` 와, 크기를 지정할 때 쓰는 HTML `<img src="경로" width="…">` 둘 다 본다.
+private func imagePathRanges(in content: String) -> [Range<String.Index>] {
+    let markdown = /!\[[^\]]*\]\(([^)\n]+)\)/
+    let html = /<img\b[^>]*?\bsrc\s*=\s*["']([^"'\n]+)["']/.ignoresCase()
+    let ranges = content.matches(of: markdown).map { $0.1.startIndex..<$0.1.endIndex }
+        + content.matches(of: html).map { $0.1.startIndex..<$0.1.endIndex }
+    return ranges.sorted { $0.lowerBound < $1.lowerBound }
+}
+
+/// 이미지 경로가 업로드할 로컬 파일이면 그 URL 을, 아니면(URL, /files/ 참조, 없는 파일) nil 을 반환한다.
+private func localImageURL(_ rawPath: Substring, baseDir: URL) -> URL? {
+    let path = rawPath.trimmingCharacters(in: .whitespaces)
+    if path.contains("://") || path.hasPrefix("data:") || path.hasPrefix("/files/") { return nil }
+    let expanded = (path as NSString).expandingTildeInPath
+    let fileURL = expanded.hasPrefix("/")
+        ? URL(fileURLWithPath: expanded)
+        : baseDir.appendingPathComponent(expanded).standardizedFileURL
+    return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
+}
+
 /// 마크다운의 이미지 참조 중 실제로 업로드해야 하는 로컬 파일 경로만 골라 반환한다.
 /// resolveInlineImages와 같은 판정 기준을 쓰므로, 업로드가 필요한지 미리 알아내는 데 사용한다.
 func localImageURLs(in content: String, baseDir: URL) -> [URL] {
-    let imagePattern = /!\[([^\]]*)\]\(([^)\n]+)\)/
-    var found: [URL] = []
-    for match in content.matches(of: imagePattern) {
-        let path = String(match.2).trimmingCharacters(in: .whitespaces)
-        if path.contains("://") || path.hasPrefix("data:") || path.hasPrefix("/files/") { continue }
-        let expanded = (path as NSString).expandingTildeInPath
-        let fileURL = expanded.hasPrefix("/")
-            ? URL(fileURLWithPath: expanded)
-            : baseDir.appendingPathComponent(expanded).standardizedFileURL
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            found.append(fileURL)
-        }
-    }
-    return found
+    imagePathRanges(in: content).compactMap { localImageURL(content[$0], baseDir: baseDir) }
 }
 
-/// 마크다운에서 로컬 이미지 참조(![대체텍스트](경로))를 찾아 업로드 후 /files/{fileId}로 치환
+/// 본문의 로컬 이미지 참조(![대체텍스트](경로), <img src="경로" …>)를 찾아 업로드 후 경로를 /files/{fileId}로 치환
+/// 경로 외의 부분(대체텍스트, <img> 의 width 등 속성)은 그대로 둔다.
 /// URL, /files/ 참조, 디스크에 존재하지 않는 경로는 그대로 둔다.
 func resolveInlineImages(
     in content: String,
     baseDir: URL,
     upload: (URL) async throws -> String
 ) async throws -> String {
-    let imagePattern = /!\[([^\]]*)\]\(([^)\n]+)\)/
-
     var result = ""
     var lastIndex = content.startIndex
-    for match in content.matches(of: imagePattern) {
-        result += content[lastIndex..<match.range.lowerBound]
-        lastIndex = match.range.upperBound
-
-        let path = String(match.2).trimmingCharacters(in: .whitespaces)
-        if path.contains("://") || path.hasPrefix("data:") || path.hasPrefix("/files/") {
-            result += content[match.range]
-            continue
+    var uploaded: [URL: String] = [:]  // 같은 파일을 여러 번 참조해도 한 번만 올린다
+    for range in imagePathRanges(in: content) {
+        guard let fileURL = localImageURL(content[range], baseDir: baseDir) else { continue }
+        let fileId: String
+        if let cached = uploaded[fileURL] {
+            fileId = cached
+        } else {
+            fileId = try await upload(fileURL)
+            uploaded[fileURL] = fileId
         }
-
-        let expanded = (path as NSString).expandingTildeInPath
-        let fileURL = expanded.hasPrefix("/")
-            ? URL(fileURLWithPath: expanded)
-            : baseDir.appendingPathComponent(expanded).standardizedFileURL
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            result += content[match.range]
-            continue
-        }
-
-        let fileId = try await upload(fileURL)
-        result += "![\(match.1)](/files/\(fileId))"
+        result += content[lastIndex..<range.lowerBound]
+        result += "/files/\(fileId)"
+        lastIndex = range.upperBound
     }
     result += content[lastIndex...]
     return result
+}
+
+/// 업무 본문·댓글에 붙여 넣는 위키 페이지 참조 링크. 두레이가 https 위키 URL 대신 이 형식을 페이지 참조로 렌더링한다.
+/// 링크 텍스트의 [ ] 는 마크다운 링크를 깨뜨리므로 &#91; &#93; 로 바꾼다.
+func wikiPageReference(id: String, subject: String, organizationId: String) -> String {
+    let text = subject.replacingOccurrences(of: "[", with: "&#91;").replacingOccurrences(of: "]", with: "&#93;")
+    return "[\(text)](dooray://\(organizationId)/pages/\(id) \"publish\")"
 }
 
 func csvEscape(_ value: String) -> String {

@@ -77,7 +77,7 @@ dooray-cli wiki list [--page 0]
 dooray-cli wiki pages <위키이름|위키ID>
 dooray-cli wiki pages --parent <페이지ID|URL>   # 위키는 상위 페이지에서 알아낸다
 
-# 위키 페이지 조회 (페이지 ID 또는 URL)
+# 위키 페이지 조회 (페이지 ID 또는 URL). `참조:` 줄은 업무 본문·댓글에 붙여 넣는 페이지 참조 링크
 dooray-cli wiki get <페이지> [--body-only] [--json]
 
 # 위키 페이지 댓글 (최신순, 한 페이지 100개)
@@ -103,6 +103,14 @@ $ dooray-cli task create my-project "제목"
 Error: 이 프로젝트는 다음 태그 그룹을 필수로 요구합니다. --tag 로 각 그룹에서 하나 이상 지정하세요.
   [Platform] Platform: Android, Platform: Etc, Platform: iOS
   [업무] 업무: Document, 업무: Etc, 업무: Feature
+```
+
+### 위키 페이지 참조
+
+업무 본문·댓글에서 위키 페이지는 https 위키 URL 이 아니라 `[제목](dooray://{조직ID}/pages/{페이지ID} "publish")` 형식의 두레이 내부 참조로 건다. `wiki get` 의 `참조:` 줄을 그대로 붙여 넣으면 되고, 제목의 `[` `]` 는 `&#91;` `&#93;` 로 이미 이스케이프돼 있다.
+
+```bash
+dooray-cli wiki get 4179845888431051522 | grep '^참조'   # 참조: [4. 홈](dooray://…/pages/4179845888431051522 "publish")
 ```
 
 ### 멘션·담당자 지정
@@ -136,6 +144,18 @@ dooray-cli task update my-project/123 --cc group:ios   # 참조자를 ios 그룹
 - `--body` 또는 댓글 텍스트 입력: 상대경로는 **현재 디렉토리 기준**
 - `--body-file`: 상대경로는 **마크다운 파일이 있는 디렉토리 기준**
 - URL(`https://...`), 기존 `/files/` 참조, 존재하지 않는 경로는 치환하지 않습니다.
+- 같은 파일을 여러 번 참조하면 한 번만 업로드합니다.
+
+#### 이미지 크기 지정
+
+마크다운 이미지는 원본 크기로 표시됩니다. 크기를 정하려면 HTML `<img>` 로 쓰고 `width` 를 줍니다. 로컬 경로를 `src` 에 넣어도 똑같이 업로드되고, `src` 만 `/files/{fileId}` 로 바뀌며 `width` 등 나머지 속성은 그대로 남습니다.
+
+```markdown
+<img src="./screenshot.png" alt="결과" width="390" />
+```
+
+- 레티나(2배) 캡처는 `width` 를 픽셀 너비의 절반으로 주면 실제 화면 크기(1배)로 보입니다. 픽셀 너비는 `sips -g pixelWidth <파일>` 로 확인합니다.
+- 이미 올린 이미지는 `![이름](/files/{fileId})` 를 `<img src="/files/{fileId}" width="…" />` 로 바꿔 `task update` 하면 됩니다.
 
 ### 본문 라운드트립 (조회 → 편집 → 재업데이트)
 
