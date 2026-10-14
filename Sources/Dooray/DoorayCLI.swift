@@ -187,7 +187,9 @@ struct TaskCommand: AsyncParsableCommand {
             )
 
             let organizationId = try await client.organizationId()
-            printPost(post, subPosts: subPosts, organizationId: organizationId)
+            // 개수는 부가 정보라 조회에 실패해도 업무 출력은 막지 않는다.
+            let commentCount = try? await client.countLogs(projectId: projectId, postId: postId)
+            printPost(post, subPosts: subPosts, organizationId: organizationId, commentCount: commentCount ?? nil)
         }
     }
 
@@ -1055,7 +1057,7 @@ struct WikiCommand: AsyncParsableCommand {
 
 // MARK: - Output Helpers
 
-func printPost(_ post: Post, subPosts: [Post] = [], organizationId: String? = nil) {
+func printPost(_ post: Post, subPosts: [Post] = [], organizationId: String? = nil, commentCount: Int? = nil) {
     // 멤버는 댓글에 바로 붙여 쓸 수 있도록 멘션 링크를 함께 출력한다 (-> 를 앞에 붙이면 담당자 지정).
     func describe(_ user: PostUser) -> String {
         guard let organizationId, let member = user.member, let id = member.organizationMemberId else {
@@ -1107,6 +1109,10 @@ func printPost(_ post: Post, subPosts: [Post] = [], organizationId: String? = ni
 
     if let fileIds = post.fileIdList, !fileIds.isEmpty {
         print("첨부파일: \(fileIds.count)개")
+    }
+
+    if let commentCount, commentCount > 0 {
+        print("댓글: \(commentCount)개 (`comment list` 로 조회, 한 페이지 20개)")
     }
 
     print("생성일: \(post.createdAt ?? "")")

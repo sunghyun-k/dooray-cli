@@ -13,6 +13,11 @@ allowed-tools: Bash(dooray-cli:*)
 - `DOORAY_API_TOKEN` 환경변수 설정 필요
 - `dooray` CLI가 PATH에 있거나 빌드되어 있어야 함
 
+## 업무 조회 지침
+
+- `task get` 에 `댓글: N개` 줄이 있으면 특별한 이유가 없는 한 `comment list` 로 댓글도 함께 읽는다. 기획·QA·개발 간 결정, 재현 조건 변경, 범위 조정이 댓글에만 남아 있는 경우가 많아 본문만 보면 잘못 판단하기 쉽다.
+- 댓글이 20개를 넘으면 `--page 1`, `--page 2` … 로 이어서 읽는다.
+
 ## 명령어 요약
 
 ### 프로젝트
@@ -31,6 +36,7 @@ dooray-cli member get <지정자>
 ```bash
 # 태스크 조회 (ID, 프로젝트코드/번호, URL 모두 지원) — 하위 태스크 목록 포함
 dooray-cli task get <식별자>   # 작성자·담당자·참조자는 '이름 (멤버ID) 멘션링크' 로 출력
+                               # 댓글이 있으면 '댓글: N개' 줄을 출력
 
 # 본문(마크다운)만 출력 — 파일 저장 후 편집·재업데이트 라운드트립 용도
 dooray-cli task get <식별자> --body-only > task.md
@@ -57,7 +63,7 @@ dooray-cli task set-workflow <식별자> <워크플로우ID>
 ### 댓글
 ```bash
 # 댓글 목록
-dooray-cli comment list <식별자> [--page 0]
+dooray-cli comment list <식별자> [--page 0]   # 한 페이지 20개. 더 있으면 --page 로 넘긴다
 
 # 댓글 작성 (텍스트 또는 마크다운 파일)
 dooray-cli comment create <식별자> "댓글 내용"

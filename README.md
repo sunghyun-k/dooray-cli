@@ -33,6 +33,7 @@ dooray-cli member get <지정자>
 
 # 태스크 조회 (ID, 프로젝트코드/번호, URL 모두 지원) — 하위 태스크 목록 포함
 dooray-cli task get <식별자>   # 작성자·담당자·참조자는 '이름 (멤버ID) 멘션링크' 로 출력
+                               # 댓글이 있으면 '댓글: N개' 줄을 출력
 
 # 본문(마크다운)만 출력 — 파일로 저장 후 편집·재업데이트하는 라운드트립 용도
 dooray-cli task get <식별자> --body-only > task.md
@@ -56,7 +57,7 @@ dooray-cli task set-parent <식별자> <상위태스크식별자>
 dooray-cli task set-workflow <식별자> <워크플로우ID>
 
 # 댓글 목록/작성/수정
-dooray-cli comment list <식별자> [--page 0]
+dooray-cli comment list <식별자> [--page 0]   # 한 페이지 20개. 더 있으면 --page 로 넘긴다
 dooray-cli comment create <식별자> "댓글 내용"
 dooray-cli comment create <식별자> --body-file 내용.md   # - 이면 표준 입력
 dooray-cli comment update <식별자> <댓글ID> "수정할 내용"   # 또는 --body-file 파일

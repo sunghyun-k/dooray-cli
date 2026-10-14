@@ -510,6 +510,19 @@ final class DoorayClient: Sendable {
         )
     }
 
+    /// 댓글 수. 목록을 1건만 요청하고 응답의 totalCount 를 쓴다(logs 는 댓글만 담는다).
+    func countLogs(projectId: String, postId: String) async throws -> Int? {
+        let path = "/project/v1/projects/\(projectId)/posts/\(postId)/logs"
+        let parameters = ["page": "0", "size": "1"]
+        do {
+            let response: DoorayResponse<[Log]> = try await get(path: path, parameters: parameters)
+            return response.totalCount
+        } catch {
+            let response: DoorayResponse<ListResult<Log>> = try await get(path: path, parameters: parameters)
+            return response.totalCount
+        }
+    }
+
     func createLog(
         projectId: String,
         postId: String,
